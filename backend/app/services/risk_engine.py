@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models import models
 from app.core.config import settings
 from sqlalchemy import desc, asc
+from datetime import datetime
 
 class RiskEngine:
     def __init__(self, db: Session):
@@ -44,3 +45,15 @@ class RiskEngine:
             desc(models.PositionGroup.unrealized_pnl_usd) # Most profitable first
         ).limit(3).all()
         return winning_groups
+
+    def mitigate_risk(self, losing_group: models.PositionGroup, winning_groups: List[models.PositionGroup]):
+        """Close losing and winning trades"""
+        losing_group.status = "Closed"
+        losing_group.closed_at = datetime.utcnow()
+        self.db.add(losing_group)
+
+        for group in winning_groups:
+            group.status = "Closed"
+            group.closed_at = datetime.utcnow()
+            self.db.add(group)
+        self.db.commit()

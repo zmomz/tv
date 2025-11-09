@@ -198,6 +198,64 @@ async def main():
         assert selected_winning_groups[1].id == winning_group_1.id
         assert selected_winning_groups[2].id == winning_group_2.id
 
+        # Test mitigate_risk method
+        # Create a new set of groups for this test to avoid interference
+        losing_group_to_mitigate = models.PositionGroup(
+            user_id=user.id,
+            api_key_id=api_key.id,
+            pair="DOGEUSDT",
+            timeframe="1h",
+            status="Live",
+            unrealized_pnl_percent=settings.RISK_LOSS_THRESHOLD_PERCENT - 3.0,
+            unrealized_pnl_usd=-300.0
+        )
+        db.add(losing_group_to_mitigate)
+
+        winning_group_to_mitigate_1 = models.PositionGroup(
+            user_id=user.id,
+            api_key_id=api_key.id,
+            pair="SHIBUSDT",
+            timeframe="1h",
+            status="Live",
+            unrealized_pnl_percent=10.0,
+            unrealized_pnl_usd=1000.0
+        )
+        db.add(winning_group_to_mitigate_1)
+
+        winning_group_to_mitigate_2 = models.PositionGroup(
+            user_id=user.id,
+            api_key_id=api_key.id,
+            pair="PEPEUSDT",
+            timeframe="1h",
+            status="Live",
+            unrealized_pnl_percent=8.0,
+            unrealized_pnl_usd=800.0
+        )
+        db.add(winning_group_to_mitigate_2)
+        db.commit()
+        db.refresh(losing_group_to_mitigate)
+        db.refresh(winning_group_to_mitigate_1)
+        db.refresh(winning_group_to_mitigate_2)
+
+        winning_groups_to_mitigate = [winning_group_to_mitigate_1, winning_group_to_mitigate_2]
+
+        risk_engine.mitigate_risk(losing_group_to_mitigate, winning_groups_to_mitigate)
+
+        db.refresh(losing_group_to_mitigate)
+        db.refresh(winning_group_to_mitigate_1)
+        db.refresh(winning_group_to_mitigate_2)
+
+        print(f"Losing group status after mitigation: {losing_group_to_mitigate.status}")
+        print(f"Winning group 1 status after mitigation: {winning_group_to_mitigate_1.status}")
+        print(f"Winning group 2 status after mitigation: {winning_group_to_mitigate_2.status}")
+
+        assert losing_group_to_mitigate.status == "Closed"
+        assert losing_group_to_mitigate.closed_at is not None
+        assert winning_group_to_mitigate_1.status == "Closed"
+        assert winning_group_to_mitigate_1.closed_at is not None
+        assert winning_group_to_mitigate_2.status == "Closed"
+        assert winning_group_to_mitigate_2.closed_at is not None
+
     finally:
         db.close()
 
