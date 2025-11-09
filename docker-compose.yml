@@ -3,9 +3,11 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: ex_engine_db
-      POSTGRES_USER: ex_engine_user
+      POSTGRES_DB: tv_engine_db
+      POSTGRES_USER: tv_user
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -16,7 +18,7 @@ services:
     depends_on:
       - postgres
     environment:
-      DATABASE_URL: postgresql://ex_engine_user:${DB_PASSWORD}@postgres/ex_engine_db
+      DATABASE_URL: postgresql://tv_user:${DB_PASSWORD}@postgres/tv_engine_db
 
   frontend:
     build: ./frontend
