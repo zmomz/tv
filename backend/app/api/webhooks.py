@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.services.signal_processor import process_signal as process_signal_service
 from app.services.position_manager import PositionGroupManager
 from app.services.exchange_manager import ExchangeManager
+from app.services.pool_manager import ExecutionPoolManager
+from app.services.queue_manager import QueueManager
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
@@ -32,7 +34,9 @@ async def log_webhook(payload: dict, status: str, error_message: Optional[str] =
 async def receive_webhook(
     request: Request,
     signature: Optional[str] = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    pool_manager: ExecutionPoolManager = Depends(ExecutionPoolManager),
+    queue_manager: QueueManager = Depends(QueueManager)
 ):
     try:
         payload = await request.json()
@@ -73,14 +77,20 @@ async def receive_webhook(
                 db.commit()
                 db.refresh(api_key)
 
-            exchange_manager = ExchangeManager(
-                api_key=settings.API_KEY,
-                api_secret=settings.API_SECRET,
-                testnet=settings.EXCHANGE_TESTNET
-            )
-            position_manager = PositionGroupManager(db=db, exchange_manager=exchange_manager)
-            new_group = position_manager.create_group(processed_signal, user.id, api_key.id)
-            print(f"Created new position group: {new_group.id}")
+            if pool_manager.can_open_position(user.id):
+                exchange_manager = ExchangeManager(
+                    api_key=settings.API_KEY,
+                    api_secret=settings.API_SECRET,
+                    testnet=settings.EXCHANGE_TESTNET
+                )
+                position_manager = PositionGroupManager(db=db, exchange_manager=exchange_manager)
+                new_group = position_manager.create_group(processed_signal, user.id, api_key.id)
+                print(f"Created new position group: {new_group.id}")
+                return {"status": "success", "message": "New position opened", "group_id": new_group.id}
+            else:
+                queued_signal = queue_manager.add_to_queue(processed_signal, user.id)
+                print(f"Added signal to queue: {queued_signal.id}")
+                return {"status": "success", "message": "Signal queued", "queued_signal_id": queued_signal.id}
 
     except ValueError as e:
         await log_webhook(payload=payload, status="error", error_message=str(e))
