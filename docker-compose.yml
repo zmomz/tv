@@ -18,10 +18,8 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
-    environment:
-      DATABASE_URL: postgresql://tv_user:${DB_PASSWORD}@postgres/tv_engine_db
-      API_KEY: ${API_KEY}
-      API_SECRET: ${API_SECRET}
+    env_file:
+      - backend/.env
     volumes:
       - ./backend:/code/app
 

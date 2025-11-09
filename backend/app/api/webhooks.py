@@ -1,7 +1,13 @@
-from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy.orm import Session
 from app.services.signal_processor import process_signal as process_signal_service
+from app.services.position_manager import PositionGroupManager
+from app.services.exchange_manager import ExchangeManager
+from app.core.config import settings
+from app.db.session import get_db
+from app.models import models
 
 router = APIRouter()
 
@@ -25,7 +31,8 @@ async def log_webhook(payload: dict, status: str, error_message: Optional[str] =
 @router.post("/webhook")
 async def receive_webhook(
     request: Request,
-    signature: Optional[str] = Header(None)
+    signature: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
 ):
     try:
         payload = await request.json()
@@ -42,6 +49,39 @@ async def receive_webhook(
     try:
         processed_signal = process_signal_service(payload)
         print(f"Processed Signal: {processed_signal}")
+
+        if processed_signal['classification'] == 'new_entry':
+            # Get or create a dummy user
+            user = db.query(models.User).filter(models.User.id == 1).first()
+            if not user:
+                user = models.User(id=1, username="dummy", hashed_password="password")
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+            # Get or create a dummy API key
+            api_key = db.query(models.APIKey).filter(models.APIKey.id == 1).first()
+            if not api_key:
+                api_key = models.APIKey(
+                    id=1,
+                    user_id=user.id,
+                    exchange="binance",
+                    encrypted_api_key="dummy_key",
+                    encrypted_secret="dummy_secret"
+                )
+                db.add(api_key)
+                db.commit()
+                db.refresh(api_key)
+
+            exchange_manager = ExchangeManager(
+                api_key=settings.API_KEY,
+                api_secret=settings.API_SECRET,
+                testnet=settings.EXCHANGE_TESTNET
+            )
+            position_manager = PositionGroupManager(db=db, exchange_manager=exchange_manager)
+            new_group = position_manager.create_group(processed_signal, user.id, api_key.id)
+            print(f"Created new position group: {new_group.id}")
+
     except ValueError as e:
         await log_webhook(payload=payload, status="error", error_message=str(e))
         raise HTTPException(status_code=400, detail=str(e))

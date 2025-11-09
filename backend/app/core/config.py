@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     RISK_REQUIRE_FULL_PYRAMIDS: bool = True
     RISK_POST_FULL_WAIT_MINUTES: int = 60
 
+    # Database Settings
+    DATABASE_URL: str
+
     class Config:
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"

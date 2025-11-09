@@ -8,3 +8,5 @@ python-multipart
 ccxt
 pydantic
 redis
+pydantic-settings
+httpx
