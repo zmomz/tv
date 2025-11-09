@@ -1,5 +1,6 @@
 import ccxt.async_support as ccxt
 from typing import Dict, Any
+from .mock_exchange import MockExchange
 
 def _round_to_precision(value: float, precision: float) -> float:
     """Rounds a value to the nearest multiple of precision."""
@@ -9,25 +10,37 @@ class ExchangeManager:
     def __init__(self, api_key: str, api_secret: str, testnet: bool = True):
         self.exchange = self._init_exchange(api_key, api_secret, testnet)
 
-    def _init_exchange(self, api_key: str, api_secret: str, testnet: bool) -> ccxt.Exchange:
-        exchange_class = getattr(ccxt, "binance")
-        exchange = exchange_class({
-            'apiKey': api_key,
-            'secret': api_secret,
-        })
+    def _init_exchange(self, api_key: str, api_secret: str, testnet: bool) -> Any:
         if testnet:
-            exchange.set_sandbox_mode(True)
-        return exchange
+            return MockExchange(api_key, api_secret, testnet)
+        else:
+            exchange_class = getattr(ccxt, "binance")
+            exchange = exchange_class({
+                'apiKey': api_key,
+                'secret': api_secret,
+            })
+            return exchange
 
     async def fetch_precision(self, symbol: str) -> Dict[str, Any]:
         """Get tick_size, step_size, min_notional"""
-        await self.exchange.load_markets()
-        market = self.exchange.market(symbol)
-        return {
-            "tick_size": market['precision']['price'],
-            "step_size": market['precision']['amount'],
-            "min_notional": market['limits']['cost']['min'],
-        }
+        if isinstance(self.exchange, MockExchange):
+            await self.exchange.load_markets()
+            market = self.exchange.markets.get(symbol)
+            if not market:
+                raise ValueError(f"Market {symbol} not found in mock exchange.")
+            return {
+                "tick_size": market['precision']['price'],
+                "step_size": market['precision']['amount'],
+                "min_notional": market['limits']['cost']['min'],
+            }
+        else:
+            await self.exchange.load_markets()
+            market = self.exchange.market(symbol)
+            return {
+                "tick_size": market['precision']['price'],
+                "step_size": market['precision']['amount'],
+                "min_notional": market['limits']['cost']['min'],
+            }
 
     async def validate_order(self, symbol: str, side: str, price: float, quantity: float) -> (bool, str):
         """Pre-flight validation before order"""
