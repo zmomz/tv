@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
+from app.services.signal_processor import process_signal as process_signal_service
 
 router = APIRouter()
 
@@ -21,10 +22,6 @@ async def log_webhook(payload: dict, status: str, error_message: Optional[str] =
     # TODO: Implement actual logging to the database
     print(f"Webhook Log - Status: {status}, Payload: {payload}, Error: {error_message}")
 
-async def process_signal(payload: dict):
-    # TODO: Implement actual signal processing logic
-    print(f"Processing signal: {payload}")
-
 @router.post("/webhook")
 async def receive_webhook(
     request: Request,
@@ -41,6 +38,12 @@ async def receive_webhook(
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     await log_webhook(payload=payload, status="received")
-    await process_signal(payload)
+    
+    try:
+        processed_signal = process_signal_service(payload)
+        print(f"Processed Signal: {processed_signal}")
+    except ValueError as e:
+        await log_webhook(payload=payload, status="error", error_message=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return {"status": "success", "message": "Webhook received and queued for processing"}
+    return {"status": "success", "message": "Webhook received and processed"}
