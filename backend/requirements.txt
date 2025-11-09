@@ -1,0 +1,10 @@
+FastAPI
+uvicorn
+SQLAlchemy
+alembic
+psycopg2-binary
+python-jose[cryptography]
+python-multipart
+ccxt
+pydantic
+redis
