@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.api import webhooks
+from app.api import webhooks, position_groups
 from app.db.session import get_db, init_db_session
 from app.services.risk_engine import RiskEngine
 from app.services.tp_manager import TPManager
@@ -44,6 +44,7 @@ async def startup_event():
     ))
 
 app.include_router(webhooks.router)
+app.include_router(position_groups.router)
 
 @app.get("/health")
 async def health_check():
