@@ -1,10 +1,8 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
+from ..db.base import Base
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-
-Base = declarative_base()
 
 class APIKey(Base):
     __tablename__ = "api_keys"

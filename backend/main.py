@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.api import webhooks, position_groups, auth, logs
+from app.api import webhooks, position_groups, auth, logs, keys
 from app.db.session import get_db, init_db_session
 from app.services.risk_engine import RiskEngine, get_risk_engine
 from app.services.tp_manager import TPManager, get_tp_manager
@@ -45,6 +45,7 @@ app.include_router(webhooks.router, prefix="/api")
 app.include_router(position_groups.router, prefix="/api")
 app.include_router(auth.router, prefix="/api/auth")
 app.include_router(logs.router, prefix="/api/logs")
+app.include_router(keys.router, prefix="/api/keys")
 
 @app.get("/api/health")
 async def health_check():

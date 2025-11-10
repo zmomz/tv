@@ -11,3 +11,4 @@ redis
 pydantic-settings
 httpxPyJWT
 apscheduler
+cryptography
