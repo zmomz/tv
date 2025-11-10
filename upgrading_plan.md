@@ -119,7 +119,7 @@ This phase decouples the application's configuration from environment variables 
 
 ## Phase 4: Comprehensive UI Development
 
-This phase focuses on building the full webtop UI as specified in the scope.
+This phase focuses on building the full webapp UI as specified in the scope.
 
 ### Step 4.1: UI Foundation & Layout
 - **Task:** Integrate a component library and build the main application shell.
@@ -155,7 +155,7 @@ This phase focuses on building the full webtop UI as specified in the scope.
 
 ---
 
-## Phase 5: Finalization & Packaging
+## Phase 5: Finalization & Deployment
 
 This phase focuses on long-term data storage, advanced analytics, and deployment.
 
@@ -175,10 +175,3 @@ This phase focuses on long-term data storage, advanced analytics, and deployment
 - **Details:**
     - Thoroughly update the `README.md` with final setup, configuration, and troubleshooting instructions.
     - Add inline code comments where the logic is complex.
-
-### Step 5.4: Desktop Packaging (Stretch Goal)
-- **Task:** Package the application as a standalone desktop app.
-- **Details:**
-    - Use a framework like **Tauri** or **Electron** to wrap the existing web UI and backend.
-    - The packaging process will need to include the Python runtime and all dependencies.
-    - Create installers for Windows (`.msi`) and macOS (`.dmg`).

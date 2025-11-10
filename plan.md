@@ -121,7 +121,7 @@ psql -U postgres -d ex_engine_db -c "\d+ position_groups"
 - [ ] Define config groups:
   ```python
   class AppSettings(BaseSettings):
-      mode: str = "webtop_self_contained"
+      mode: str = "webapp_self_contained"
       data_dir: str = "./engine_data"
       log_level: str = "info"
   
@@ -847,24 +847,6 @@ npm start
 
 ---
 
-### 11.2 Desktop App Packaging
-**Goal:** Standalone installers for Windows/macOS
-
-**Options:**
-1. **Electron** (package web app as desktop)
-2. **PyInstaller** (bundle Python backend)
-3. **Tauri** (Rust-based, lighter than Electron)
-
-**Tasks:**
-- [ ] Choose packaging solution
-- [ ] Bundle backend + frontend + database
-- [ ] Create Windows installer (.exe)
-- [ ] Create macOS installer (.dmg)
-- [ ] Test installers on clean machines
-- [ ] Add auto-updater mechanism
-
----
-
 ## 📚 Phase 12: Documentation (Week 16)
 
 ### 12.1 User Documentation
@@ -978,7 +960,6 @@ npm start
 - ✅ Automated risk engine with timer
 - ✅ Performance dashboard with charts
 - ✅ Full configuration UI
-- ✅ Desktop installers (Windows + macOS)
 - ✅ Complete documentation
 
 ---
