@@ -8,6 +8,33 @@ The current application has a functional backend for state management, a basic U
 
 ---
 
+## 2. Current Application State
+
+This section provides a clear summary of the application's current capabilities and limitations.
+
+### What is Working:
+- **Webhook Processing:** The backend can receive and validate TradingView webhooks.
+- **State Management:** It correctly creates and stores records for `PositionGroups` and `Pyramids` in the PostgreSQL database.
+- **Execution Pool & Queue:** The system enforces a maximum number of live positions and queues new signals when the limit is reached.
+- **Risk Engine Foundation:** The basic logic for identifying losing trades and potential offsetting winners is in place.
+- **Basic UI:** The React frontend can connect to the backend, fetch the list of all position groups, and display them in a simple table.
+- **Dockerization:** The entire stack (backend, frontend, database) is containerized and runs via a single `docker-compose` command.
+
+### What is Missing (The Gaps):
+- **Core Trading Logic:** The application is a **state manager**, not an **execution engine**. It does not place any real orders on an exchange.
+    - **No DCA/Pyramid Execution:** It does not calculate or place the required grid of DCA orders.
+    - **No Take-Profit (TP) Logic:** The TP manager is a placeholder and does not monitor prices or close trades.
+    - **No Exit Logic:** It does not handle exit signals from TradingView.
+- **Advanced Features:**
+    - **Sophisticated Queue Priority:** The queue is currently FIFO (First-In-First-Out) and lacks the advanced priority ranking.
+    - **Incomplete Risk Engine:** The risk engine only checks the loss threshold and does not implement timers, pyramid counts, or precise partial-closing logic.
+- **Comprehensive UI:** The UI is a proof-of-concept and lacks the vast majority of required features:
+    - No dashboard, detailed DCA view, risk panel, queue manager, logs viewer, or settings panel.
+- **Configuration:** All settings are managed via `.env` files, not a user-friendly UI with a JSON backend as required.
+- **Security & Logging:** API keys are stored in plaintext, and logging is done via basic `print` statements.
+
+---
+
 ## Phase 1: Core Trading Logic Implementation
 
 This is the most critical phase, focused on transforming the application from a state manager into a functional trading bot that executes orders.
