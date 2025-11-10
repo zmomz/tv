@@ -1,11 +1,12 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.api import webhooks, position_groups, auth
+from app.api import webhooks, position_groups, auth, logs
 from app.db.session import get_db, init_db_session
 from app.services.risk_engine import RiskEngine, get_risk_engine
 from app.services.tp_manager import TPManager, get_tp_manager
 from app.services.pool_manager import ExecutionPoolManager, get_pool_manager
 from app.services.queue_manager import QueueManager, get_queue_manager
+from app.tasks.log_cleanup import scheduler
 import asyncio
 import time
 
@@ -37,11 +38,13 @@ async def main_loop_task():
 @app.on_event("startup")
 async def startup_event():
     init_db_session()
+    scheduler.start()
     asyncio.create_task(main_loop_task())
 
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(position_groups.router, prefix="/api")
 app.include_router(auth.router, prefix="/api/auth")
+app.include_router(logs.router, prefix="/api/logs")
 
 @app.get("/api/health")
 async def health_check():

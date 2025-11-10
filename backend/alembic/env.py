@@ -19,6 +19,7 @@ if config.config_file_name is not None:
 from backend.app.models.models import Base
 from backend.app.models import models
 from backend.app.models import user_models
+from backend.app.models import log_models
 
 target_metadata = Base.metadata
 

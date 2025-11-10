@@ -10,3 +10,4 @@ pydantic
 redis
 pydantic-settings
 httpxPyJWT
+apscheduler

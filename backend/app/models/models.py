@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -9,7 +10,7 @@ class APIKey(Base):
     __tablename__ = "api_keys"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     exchange = Column(String, nullable=False)
     encrypted_api_key = Column(String, nullable=False)
     encrypted_secret = Column(String, nullable=False)
@@ -22,7 +23,7 @@ class PositionGroup(Base):
     __tablename__ = "position_groups"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True, nullable=False)
     api_key_id = Column(Integer, ForeignKey("api_keys.id"), nullable=False)
     pair = Column(String, index=True, nullable=False)
     timeframe = Column(String, nullable=False)
@@ -68,7 +69,7 @@ class QueuedSignal(Base):
     __tablename__ = "queued_signals"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     pair = Column(String, nullable=False)
     timeframe = Column(String, nullable=False)
     payload = Column(String, nullable=False) # Store the raw webhook payload as a string
