@@ -22,4 +22,4 @@ ENV PYTHONPATH="/code:/code/app"
 
 # Command to run the application
 # We use --reload-dir to watch for changes in our mounted volume
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/code/app"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/code/backend/app"]

@@ -5,18 +5,6 @@ from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    api_keys = relationship("APIKey", back_populates="owner")
-    position_groups = relationship("PositionGroup", back_populates="owner")
-    queued_signals = relationship("QueuedSignal", back_populates="owner")
-
 class APIKey(Base):
     __tablename__ = "api_keys"
 
@@ -28,7 +16,6 @@ class APIKey(Base):
     is_testnet = Column(Boolean, default=True)
     is_active = Column(Boolean, default=True)
 
-    owner = relationship("User", back_populates="api_keys")
     position_groups = relationship("PositionGroup", back_populates="api_key_rel")
 
 class PositionGroup(Base):
@@ -48,7 +35,6 @@ class PositionGroup(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
     last_pyramid_at = Column(DateTime(timezone=True), nullable=True)
 
-    owner = relationship("User", back_populates="position_groups")
     api_key_rel = relationship("APIKey", back_populates="position_groups")
     pyramids = relationship("Pyramid", back_populates="position_group")
 
@@ -90,8 +76,6 @@ class QueuedSignal(Base):
     replacement_count = Column(Integer, default=0)
     priority_rank = Column(Float, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    owner = relationship("User", back_populates="queued_signals")
 
 class WebhookLog(Base):
     __tablename__ = "webhook_logs"

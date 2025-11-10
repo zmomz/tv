@@ -5,6 +5,8 @@ services:
       POSTGRES_DB: tv_engine_db
       POSTGRES_USER: tv_user
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+    env_file:
+      - backend/.env
     ports:
       - "5433:5432"
     volumes:
@@ -21,7 +23,7 @@ services:
     env_file:
       - backend/.env
     volumes:
-      - ./backend:/code/app
+      - .:/code
 
   frontend:
     build:

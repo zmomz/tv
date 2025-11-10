@@ -9,4 +9,4 @@ ccxt
 pydantic
 redis
 pydantic-settings
-httpx
+httpxPyJWT

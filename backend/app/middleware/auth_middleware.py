@@ -1,0 +1,60 @@
+from functools import wraps
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from app.services import jwt_service
+from app.models.user_models import User
+from app.db.session import get_db
+from sqlalchemy.orm import Session
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+def require_authenticated(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        token = kwargs.get("token")
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        try:
+            payload = jwt_service.verify_token(token)
+            return await func(*args, **kwargs)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=str(e),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return wrapper
+
+def require_role(role: str):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            token = kwargs.get("token")
+            db = kwargs.get("db")
+            if not token:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Not authenticated",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            try:
+                payload = jwt_service.verify_token(token)
+                user_role = payload.get("role")
+                if user_role not in [role, "manager", "admin"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not enough permissions",
+                    )
+                return await func(*args, **kwargs)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=str(e),
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        return wrapper
+    return decorator
