@@ -13,3 +13,5 @@ httpxPyJWT
 apscheduler
 cryptography
 ccxt
+pytest
+pytest-mock
