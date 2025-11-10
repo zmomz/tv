@@ -4,6 +4,8 @@ from app.models import models
 from app.core.config import settings
 from sqlalchemy import desc, asc
 from datetime import datetime
+from fastapi import Depends
+from app.db.session import get_db
 
 class RiskEngine:
     def __init__(self, db: Session):
@@ -57,3 +59,6 @@ class RiskEngine:
             group.closed_at = datetime.utcnow()
             self.db.add(group)
         self.db.commit()
+
+def get_risk_engine(db: Session = Depends(get_db)) -> RiskEngine:
+    return RiskEngine(db)

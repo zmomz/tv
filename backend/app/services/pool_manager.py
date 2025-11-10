@@ -2,6 +2,8 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.models import models
 from app.core.config import settings
+from fastapi import Depends
+from app.db.session import get_db
 
 class ExecutionPoolManager:
     def __init__(self, db: Session):
@@ -30,3 +32,6 @@ class ExecutionPoolManager:
         """Free slot when group closes"""
         # This will be handled when a PositionGroup's status changes from 'Live'
         pass
+
+def get_pool_manager(db: Session = Depends(get_db)) -> ExecutionPoolManager:
+    return ExecutionPoolManager(db)

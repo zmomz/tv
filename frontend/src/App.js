@@ -9,7 +9,7 @@ function App() {
     setMessage('Hello from React!');
 
     // Fetch backend status
-    fetch('/health')
+    fetch('/api/health')
       .then(response => response.json())
       .then(data => setBackendStatus(data.status))
       .catch(error => {
@@ -18,7 +18,7 @@ function App() {
       });
 
     // Fetch position groups
-    fetch('/position_groups')
+    fetch('/api/position_groups')
       .then(response => response.json())
       .then(data => setPositionGroups(data))
       .catch(error => {

@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app.services.signal_processor import process_signal as process_signal_service
 from app.services.position_manager import PositionGroupManager
 from app.services.exchange_manager import ExchangeManager
-from app.services.pool_manager import ExecutionPoolManager
-from app.services.queue_manager import QueueManager
+from app.services.pool_manager import ExecutionPoolManager, get_pool_manager
+from app.services.queue_manager import QueueManager, get_queue_manager
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
@@ -35,8 +35,8 @@ async def receive_webhook(
     request: Request,
     signature: Optional[str] = Header(None),
     db: Session = Depends(get_db),
-    pool_manager: ExecutionPoolManager = Depends(ExecutionPoolManager),
-    queue_manager: QueueManager = Depends(QueueManager)
+    pool_manager: ExecutionPoolManager = Depends(get_pool_manager),
+    queue_manager: QueueManager = Depends(get_queue_manager)
 ):
     try:
         payload = await request.json()

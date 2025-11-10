@@ -2,6 +2,8 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.models import models
 from sqlalchemy import desc
+from fastapi import Depends
+from app.db.session import get_db
 
 class QueueManager:
     def __init__(self, db: Session):
@@ -40,3 +42,6 @@ class QueueManager:
             models.QueuedSignal.user_id == user_id,
             models.QueuedSignal.status == "queued"
         ).order_by(models.QueuedSignal.created_at).first()
+
+def get_queue_manager(db: Session = Depends(get_db)) -> QueueManager:
+    return QueueManager(db)

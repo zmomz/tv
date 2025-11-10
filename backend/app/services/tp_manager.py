@@ -1,6 +1,8 @@
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.models import models
+from fastapi import Depends
+from app.db.session import get_db
 
 class TPManager:
     def __init__(self, db: Session):
@@ -24,3 +26,6 @@ class TPManager:
         """Run both, first trigger wins"""
         # TODO: Implement hybrid TP logic
         return None
+
+def get_tp_manager(db: Session = Depends(get_db)) -> TPManager:
+    return TPManager(db)
