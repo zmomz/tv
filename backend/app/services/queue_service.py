@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.trading_models import PositionGroup
+from ..models.trading_models import PositionGroup
 from uuid import UUID
 
 # This is a placeholder for the QueueEntry model, which will be

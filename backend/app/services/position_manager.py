@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from app.models import models
-from app.services.exchange_manager import ExchangeManager
+from ..models import trading_models as models
+from ..services.exchange_manager import ExchangeManager
 
 class PositionGroupManager:
     def __init__(self, db: Session, exchange_manager: ExchangeManager):

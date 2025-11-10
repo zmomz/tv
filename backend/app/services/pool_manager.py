@@ -1,9 +1,9 @@
 from typing import Dict, Any
 from sqlalchemy.orm import Session
-from app.models import models
-from app.core.config import settings
+from ..models import trading_models as models
+from ..core.config import settings
 from fastapi import Depends
-from app.db.session import get_db
+from ..db.session import get_db
 
 class ExecutionPoolManager:
     def __init__(self, db: Session):

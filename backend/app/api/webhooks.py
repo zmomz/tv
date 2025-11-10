@@ -2,14 +2,14 @@ from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
-from app.services.signal_processor import process_signal as process_signal_service
-from app.services.position_manager import PositionGroupManager
-from app.services.exchange_manager import ExchangeManager
-from app.services.pool_manager import ExecutionPoolManager, get_pool_manager
-from app.services.queue_manager import QueueManager, get_queue_manager
-from app.core.config import settings
-from app.db.session import get_db
-from app.models import models
+from ..services.signal_processor import process_signal as process_signal_service
+from ..services.position_manager import PositionGroupManager
+from ..services.exchange_manager import ExchangeManager
+from ..services.pool_manager import ExecutionPoolManager, get_pool_manager
+from ..services.queue_manager import QueueManager, get_queue_manager
+from ..core.config import settings
+from ..db.session import get_db
+from ..models import models
 
 router = APIRouter()
 

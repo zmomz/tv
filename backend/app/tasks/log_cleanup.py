@@ -1,7 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.models.log_models import SystemLog, AuditLog
+from ..db.session import get_db
+from ..models.log_models import SystemLog, AuditLog
 from datetime import datetime, timedelta
 
 def delete_old_logs():

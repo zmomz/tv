@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.schemas.key_schemas import ExchangeConfigCreate, ExchangeConfigOut
-from app.services import encryption_service
-from app.models.key_models import ExchangeConfig
-from app.middleware.auth_middleware import require_authenticated
+from ..db.session import get_db
+from ..schemas.key_schemas import ExchangeConfigCreate, ExchangeConfigOut
+from ..services import encryption_service, jwt_service
+from ..models.key_models import ExchangeConfig
+from ..middleware.auth_middleware import require_authenticated
 from typing import List
 from uuid import UUID
 

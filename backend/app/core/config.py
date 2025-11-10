@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Database Settings
     DATABASE_URL: str
 
+    # Security Settings
+    JWT_SECRET: str
+    ENCRYPTION_KEY: str
+
     class Config:
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"

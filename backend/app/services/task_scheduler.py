@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.services import order_service, take_profit_service, risk_engine, exchange_manager
-from app.db.session import get_db
+from ..services import order_service, take_profit_service, risk_engine, exchange_manager
+from ..db.session import get_db
 
 def setup_scheduler():
     """

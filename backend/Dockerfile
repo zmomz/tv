@@ -15,11 +15,11 @@ COPY backend/requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 # Copy the backend code into the container
-COPY ./backend /code/app
+COPY ./backend /code/backend
 
 # Set the python path to include the project root and the app directory
-ENV PYTHONPATH="/code:/code/app"
+ENV PYTHONPATH="/code"
 
 # Command to run the application
 # We use --reload-dir to watch for changes in our mounted volume
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/code/backend/app"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

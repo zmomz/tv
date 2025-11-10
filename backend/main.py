@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.api import webhooks, position_groups, auth, logs, keys
-from app.db.session import get_db, init_db_session
-from app.services.risk_engine import RiskEngine, get_risk_engine
-from app.services.tp_manager import TPManager, get_tp_manager
-from app.services.pool_manager import ExecutionPoolManager, get_pool_manager
-from app.services.queue_manager import QueueManager, get_queue_manager
-from app.tasks.log_cleanup import scheduler
+from backend.app.api import webhooks, position_groups, auth, logs, keys
+from backend.app.db.session import get_db, init_db_session
+from backend.app.services.risk_engine import RiskEngine, get_risk_engine
+from backend.app.services.tp_manager import TPManager, get_tp_manager
+from backend.app.services.pool_manager import ExecutionPoolManager, get_pool_manager
+from backend.app.services.queue_manager import QueueManager, get_queue_manager
+from backend.app.tasks.log_cleanup import scheduler
 import asyncio
 import time
 

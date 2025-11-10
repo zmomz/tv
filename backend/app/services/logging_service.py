@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.log_models import SystemLog, AuditLog
+from ..models.log_models import SystemLog, AuditLog
 from uuid import UUID
 
 def log_debug(db: Session, category: str, message: str, user_id: UUID = None, details: dict = None):

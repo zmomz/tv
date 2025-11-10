@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
-from app.db.session import get_db
-from app.models import models
+from ..db.session import get_db
+from ..models import trading_models as models
 from pydantic import BaseModel
 
 router = APIRouter()

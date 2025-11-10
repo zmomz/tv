@@ -1,8 +1,8 @@
 from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
-from app.models import models
 from fastapi import Depends
-from app.db.session import get_db
+from sqlalchemy.orm import Session
+from ..models import trading_models as models
+from ..db.session import get_db
 
 class TPManager:
     def __init__(self, db: Session):

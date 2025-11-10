@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.models.trading_models import PositionGroup, DCAOrder
-from app.services import exchange_manager, grid_calculator, precision_service
+from ..models.trading_models import PositionGroup, DCAOrder
+from ..services import exchange_manager, grid_calculator, precision_service
 from uuid import UUID
 from decimal import Decimal
 

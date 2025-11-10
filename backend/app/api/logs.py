@@ -1,16 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.models.log_models import SystemLog, AuditLog
+from ..db.session import get_db
+from ..models.log_models import SystemLog, AuditLog
 from datetime import datetime, timedelta
 from typing import List
-from app.schemas.log_schemas import SystemLogOut, AuditLogOut
-from app.middleware.auth_middleware import require_role
+from ..schemas.log_schemas import SystemLogOut, AuditLogOut
+from ..dependencies import require_role
+from ..models.user_models import User
 
 router = APIRouter()
 
 @router.get("/system", response_model=List[SystemLogOut])
-@require_role("admin")
 def get_system_logs(
     level: str = None,
     category: str = None,
@@ -18,6 +18,7 @@ def get_system_logs(
     end_date: datetime = None,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
 ):
     """
     Get system logs.
@@ -34,7 +35,6 @@ def get_system_logs(
     return query.limit(limit).all()
 
 @router.get("/audit", response_model=List[AuditLogOut])
-@require_role("admin")
 def get_audit_logs(
     user_id: str = None,
     action: str = None,
@@ -42,6 +42,7 @@ def get_audit_logs(
     end_date: datetime = None,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
 ):
     """
     Get audit logs.
@@ -58,8 +59,11 @@ def get_audit_logs(
     return query.limit(limit).all()
 
 @router.delete("/system/{days_old}")
-@require_role("admin")
-def delete_system_logs(days_old: int, db: Session = Depends(get_db)):
+def delete_system_logs(
+    days_old: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
     """
     Delete system logs older than X days.
     """
@@ -72,8 +76,7 @@ def delete_system_logs(days_old: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 @router.post("/export")
-@require_role("admin")
-def export_logs():
+def export_logs(current_user: User = Depends(require_role("admin"))):
     """
     Export logs as CSV/JSON.
     """

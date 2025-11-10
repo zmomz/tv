@@ -1,5 +1,5 @@
 from decimal import Decimal
-from app.services import exchange_manager
+from ..services import exchange_manager
 from sqlalchemy.orm import Session
 
 async def validate_and_adjust_order(

@@ -6,13 +6,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://tv_user:***REDACTED***@postgres:5432/tv_engine_db
+      - DATABASE_URL=postgresql://tv_user:***REDACTED***@db:5432/tv_engine_db
       - JWT_SECRET=your-jwt-secret-key
     depends_on:
       - db
       - redis
     volumes:
       - .:/code
+    networks:
+      - tv_engine_net
 
   db:
     image: postgres:13
@@ -24,9 +26,13 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tv_engine_net
 
   redis:
     image: redis:alpine
+    networks:
+      - tv_engine_net
 
   frontend:
     build:
@@ -36,6 +42,12 @@ services:
       - "3000:80"
     depends_on:
       - app
+    networks:
+      - tv_engine_net
 
 volumes:
   postgres_data:
+
+networks:
+  tv_engine_net:
+    driver: bridge

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.trading_models import PositionGroup
+from ..models.trading_models import PositionGroup
 from uuid import UUID
 import hmac
 import hashlib

@@ -1,9 +1,8 @@
 from typing import Dict, Any, Optional
-from sqlalchemy.orm import Session
-from app.models import models
-from sqlalchemy import desc
 from fastapi import Depends
-from app.db.session import get_db
+from sqlalchemy.orm import Session
+from ..models import models
+from ..db.session import get_db
 
 class QueueManager:
     def __init__(self, db: Session):

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.models.trading_models import PositionGroup, DCAOrder
-from app.services import exchange_manager
+from ..models.trading_models import PositionGroup, DCAOrder
+from ..services import exchange_manager
 from decimal import Decimal
 
 async def check_take_profit_conditions() -> None:

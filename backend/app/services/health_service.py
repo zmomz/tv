@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.services import exchange_manager
+from ..db.session import get_db
+from ..services import exchange_manager
 from uuid import UUID
 
 async def check_system_health() -> dict:
