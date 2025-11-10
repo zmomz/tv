@@ -1,29 +1,32 @@
 services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: tv_engine_db
-      POSTGRES_USER: tv_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    env_file:
-      - backend/.env
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  backend:
+  app:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://tv_user:***REDACTED***@postgres:5432/tv_engine_db
+      - JWT_SECRET=your-jwt-secret-key
     depends_on:
-      - postgres
-    env_file:
-      - backend/.env
+      - db
+      - redis
     volumes:
       - .:/code
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=tv_engine_db
+      - POSTGRES_USER=tv_user
+      - POSTGRES_PASSWORD=***REDACTED***
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
 
   frontend:
     build:
@@ -32,7 +35,7 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      - app
 
 volumes:
   postgres_data:
