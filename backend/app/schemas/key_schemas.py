@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
+from typing import Optional
 
 class ExchangeConfigCreate(BaseModel):
     exchange_name: str
@@ -15,8 +16,8 @@ class ExchangeConfigOut(BaseModel):
     mode: str
     is_enabled: bool
     is_validated: bool
-    last_validated: datetime = None
+    last_validated: Optional[datetime] = None
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True

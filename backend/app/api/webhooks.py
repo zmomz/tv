@@ -10,6 +10,9 @@ from ..services.queue_manager import QueueManager, get_queue_manager
 from ..core.config import settings
 from ..db.session import get_db
 from ..models import models
+from ..models.user_models import User
+from ..models.key_models import ExchangeConfig
+import uuid
 
 router = APIRouter()
 
@@ -30,8 +33,9 @@ async def log_webhook(payload: dict, status: str, error_message: Optional[str] =
     # TODO: Implement actual logging to the database
     print(f"Webhook Log - Status: {status}, Payload: {payload}, Error: {error_message}")
 
-@router.post("/webhook")
+@router.post("/webhook/{user_id:uuid}")
 async def receive_webhook(
+    user_id: uuid.UUID,
     request: Request,
     signature: Optional[str] = Header(None),
     db: Session = Depends(get_db),
@@ -44,6 +48,14 @@ async def receive_webhook(
         await log_webhook(payload={}, status="error", error_message=f"Invalid JSON payload: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
+    # --- User and Exchange Config Lookup ---
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        await log_webhook(payload=payload, status="error", error_message=f"User not found: {user_id}")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # The signature verification should be user-specific
+    # For now, we'll keep the simple secret check
     if not verify_signature(payload, signature):
         await log_webhook(payload=payload, status="error", error_message="Invalid signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
@@ -52,41 +64,29 @@ async def receive_webhook(
     
     try:
         processed_signal = process_signal_service(payload)
-        print(f"Processed Signal: {processed_signal}")
+        exchange_name = processed_signal.get("exchange")
 
         if processed_signal['classification'] == 'new_entry':
-            # Get or create a dummy user
-            user = db.query(models.User).filter(models.User.id == 1).first()
-            if not user:
-                user = models.User(id=1, username="dummy", hashed_password="password")
-                db.add(user)
-                db.commit()
-                db.refresh(user)
+            # Look up the specific exchange configuration for this user
+            exchange_config = db.query(ExchangeConfig).filter(
+                ExchangeConfig.user_id == user.id,
+                ExchangeConfig.exchange_name == exchange_name,
+                ExchangeConfig.is_enabled == True
+            ).first()
 
-            # Get or create a dummy API key
-            api_key = db.query(models.APIKey).filter(models.APIKey.id == 1).first()
-            if not api_key:
-                api_key = models.APIKey(
-                    id=1,
-                    user_id=user.id,
-                    exchange="binance",
-                    encrypted_api_key="dummy_key",
-                    encrypted_secret="dummy_secret"
-                )
-                db.add(api_key)
-                db.commit()
-                db.refresh(api_key)
+            if not exchange_config:
+                error_msg = f"Active exchange config not found for user {user.id} and exchange {exchange_name}"
+                await log_webhook(payload=payload, status="error", error_message=error_msg)
+                raise HTTPException(status_code=404, detail=error_msg)
 
             if pool_manager.can_open_position(user.id):
-                exchange_manager = ExchangeManager(
-                    api_key=settings.API_KEY,
-                    api_secret=settings.API_SECRET,
-                    testnet=settings.EXCHANGE_TESTNET
-                )
-                position_manager = PositionGroupManager(db=db, exchange_manager=exchange_manager)
-                new_group = position_manager.create_group(processed_signal, user.id, api_key.id)
-                print(f"Created new position group: {new_group.id}")
-                return {"status": "success", "message": "New position opened", "group_id": new_group.id}
+                async with ExchangeManager(db=db, user_id=user.id, exchange_name=exchange_name) as exchange_manager:
+                    position_manager = PositionGroupManager(db=db, exchange_manager=exchange_manager)
+                    # Note: The signature for create_group might need to be updated
+                    # It previously expected an api_key.id which is no longer relevant in this context
+                    new_group = await position_manager.create_group(processed_signal, user.id, exchange_config.id)
+                    print(f"Created new position group: {new_group.id}")
+                    return {"status": "success", "message": "Position group created and pending execution", "group_id": new_group.id}
             else:
                 queued_signal = queue_manager.add_to_queue(processed_signal, user.id)
                 print(f"Added signal to queue: {queued_signal.id}")

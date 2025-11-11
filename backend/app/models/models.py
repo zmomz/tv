@@ -1,3 +1,5 @@
+import uuid
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID
 from ..db.base import Base
@@ -7,7 +9,7 @@ from sqlalchemy.orm import relationship
 class APIKey(Base):
     __tablename__ = "api_keys"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     exchange = Column(String, nullable=False)
     encrypted_api_key = Column(String, nullable=False)

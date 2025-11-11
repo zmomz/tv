@@ -14,7 +14,7 @@ class ExecutionPoolManager:
         max_open_groups = settings.POOL_MAX_OPEN_GROUPS
         open_groups_count = self.db.query(models.PositionGroup).filter(
             models.PositionGroup.user_id == user_id,
-            models.PositionGroup.status == "Live"
+            models.PositionGroup.status == "live"
         ).count()
         return max_open_groups - open_groups_count
 

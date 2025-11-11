@@ -14,7 +14,7 @@ class PositionGroup(BaseModel):
     unrealized_pnl_percent: float
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @router.get("/position_groups", response_model=List[PositionGroup])
 async def get_position_groups(db: Session = Depends(get_db)):

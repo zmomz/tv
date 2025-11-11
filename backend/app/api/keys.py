@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from ..db.session import get_db
 from ..schemas.key_schemas import ExchangeConfigCreate, ExchangeConfigOut
 from ..services import encryption_service, jwt_service
+from ..services.encryption_service import ENCRYPTION_KEY
 from ..models.key_models import ExchangeConfig
-from ..middleware.auth_middleware import require_authenticated
+from ..middleware.auth_middleware import require_authenticated, get_current_user
 from typing import List
 from uuid import UUID
 
@@ -12,11 +13,11 @@ router = APIRouter()
 
 @router.post("/{exchange}", response_model=ExchangeConfigOut)
 @require_authenticated
-def create_exchange_config(
+async def create_exchange_config(
     exchange: str,
     config: ExchangeConfigCreate,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(lambda token: UUID(jwt_service.verify_token(token)["sub"])),
+    user_id: UUID = Depends(get_current_user),
 ):
     """
     Create a new exchange configuration.
@@ -38,9 +39,9 @@ def create_exchange_config(
 
 @router.get("", response_model=List[ExchangeConfigOut])
 @require_authenticated
-def get_exchange_configs(
+async def get_exchange_configs(
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(lambda token: UUID(jwt_service.verify_token(token)["sub"])),
+    user_id: UUID = Depends(get_current_user),
 ):
     """
     Get all exchange configurations for the current user.
@@ -49,10 +50,10 @@ def get_exchange_configs(
 
 @router.put("/{exchange}/validate")
 @require_authenticated
-def validate_exchange_config(
+async def validate_exchange_config(
     exchange: str,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(lambda token: UUID(jwt_service.verify_token(token)["sub"])),
+    user_id: UUID = Depends(get_current_user),
 ):
     """
     Validate the connection to an exchange.
@@ -64,10 +65,10 @@ def validate_exchange_config(
 
 @router.delete("/{exchange}")
 @require_authenticated
-def delete_exchange_config(
+async def delete_exchange_config(
     exchange: str,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(lambda token: UUID(jwt_service.verify_token(token)["sub"])),
+    user_id: UUID = Depends(get_current_user),
 ):
     """
     Delete an exchange configuration.
@@ -81,11 +82,11 @@ def delete_exchange_config(
 
 @router.put("/{exchange}/mode")
 @require_authenticated
-def set_exchange_mode(
+async def set_exchange_mode(
     exchange: str,
     mode: str,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(lambda token: UUID(jwt_service.verify_token(token)["sub"])),
+    user_id: UUID = Depends(get_current_user),
 ):
     """
     Set the mode for an exchange (testnet or live).
@@ -98,5 +99,27 @@ def set_exchange_mode(
         raise HTTPException(status_code=404, detail="Exchange configuration not found")
     
     db_config.mode = mode
+    db.commit()
+    return {"success": True}
+
+@router.put("/{exchange}/enable")
+@require_authenticated
+async def set_exchange_enabled(
+    exchange: str,
+    enable: bool,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user),
+):
+    """
+    Enable or disable an exchange configuration.
+    """
+    db_config = db.query(ExchangeConfig).filter(
+        ExchangeConfig.user_id == user_id,
+        ExchangeConfig.exchange_name == exchange,
+    ).first()
+    if not db_config:
+        raise HTTPException(status_code=404, detail="Exchange configuration not found")
+    
+    db_config.is_enabled = enable
     db.commit()
     return {"success": True}

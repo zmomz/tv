@@ -5,11 +5,12 @@ from pydantic import Field
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
 class Settings(BaseSettings):
     # App Settings
     APP_MODE: str = "webtop_self_contained"
     APP_DATA_DIR: str = "./engine_data"
-    APP_LOG_LEVEL: str = "info"
+    APP_LOG_LEVEL: str = "INFO"
 
     # Exchange Settings
     EXCHANGE_NAME: str = "binance"
@@ -33,9 +34,11 @@ class Settings(BaseSettings):
     # Security Settings
     JWT_SECRET: str
     ENCRYPTION_KEY: str
+    REDIS_URL: str
 
     class Config:
-        env_file = BASE_DIR / ".env"
+        env_file = BASE_DIR.parent / ".env"
         env_file_encoding = "utf-8"
+
 
 settings = Settings()

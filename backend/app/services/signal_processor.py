@@ -8,12 +8,12 @@ class SignalProcessor:
         """Classifies the signal as a new entry, pyramid, or exit."""
         # TODO: Implement more sophisticated classification logic
         intent = self.payload.get("execution_intent", {})
-        if intent.get("type") == "signal":
+        action = intent.get("action")
+        strategy = intent.get("strategy")
+
+        if action in ["buy", "sell"] and strategy == "grid":
             return "new_entry"
-        elif intent.get("type") == "pyramid":
-            return "pyramid"
-        elif intent.get("type") == "exit":
-            return "exit"
+        # TODO: Add logic for pyramid and exit signals
         else:
             return "unknown"
 
@@ -23,6 +23,8 @@ class SignalProcessor:
             return False, "Missing 'tv' data in payload"
         if "execution_intent" not in self.payload:
             return False, "Missing 'execution_intent' data in payload"
+        if "exchange" not in self.payload["tv"]:
+            return False, "Missing 'exchange' in 'tv' data"
         
         # TODO: Add more specific validation rules
         
@@ -45,10 +47,12 @@ def process_signal(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"Invalid signal: {reason}")
         
     classification = processor.classify_signal()
+    exchange = payload.get("tv", {}).get("exchange")
     
     # For now, we'll just return a dictionary with the processed data
     return {
         "classification": classification,
         "original_payload": payload,
-        "is_valid": True
+        "is_valid": True,
+        "exchange": exchange
     }

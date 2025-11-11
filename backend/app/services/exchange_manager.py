@@ -33,7 +33,24 @@ class ExchangeManager:
         if db_config.mode == 'testnet':
             self.exchange.set_sandbox_mode(True)
         
-        return self.exchange
+        return self
+
+    async def get_current_price(self, symbol: str) -> Decimal:
+        """Fetches the current market price for a symbol."""
+        ticker = await self.exchange.fetch_ticker(symbol)
+        return Decimal(str(ticker['last']))
+
+    async def create_market_order(self, symbol: str, side: str, amount: Decimal):
+        """Places a market order."""
+        return await self.exchange.create_market_order(symbol, side, amount)
+
+    async def place_order(self, symbol: str, side: str, amount: Decimal, order_type: str = 'market'):
+        """Places an order on the exchange."""
+        if order_type == 'market':
+            return await self.create_market_order(symbol, side, amount)
+        # TODO: Add support for other order types (e.g., limit)
+        else:
+            raise NotImplementedError(f"Order type '{order_type}' is not supported.")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.exchange:

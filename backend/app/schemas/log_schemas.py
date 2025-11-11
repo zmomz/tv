@@ -13,7 +13,7 @@ class SystemLogOut(BaseModel):
     ip_address: str = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AuditLogOut(BaseModel):
     id: UUID
@@ -26,4 +26,4 @@ class AuditLogOut(BaseModel):
     ip_address: str = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True

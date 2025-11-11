@@ -3,11 +3,10 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    env_file:
+      - ./.env
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://tv_user:***REDACTED***@db:5432/tv_engine_db
-      - JWT_SECRET=your-jwt-secret-key
     depends_on:
       - db
       - redis
@@ -20,8 +19,8 @@ services:
     image: postgres:13
     environment:
       - POSTGRES_DB=tv_engine_db
-      - POSTGRES_USER=tv_user
-      - POSTGRES_PASSWORD=***REDACTED***
+      - POSTGRES_USER=tv_user       
+      - POSTGRES_PASSWORD=***REDACTED*** 
     ports:
       - "5433:5432"
     volumes:

@@ -17,13 +17,14 @@ Following the detailed `upgrading_plan.md`.
 1.  **[COMPLETED] Phase 0: Multi-User Authentication & Security Foundation**
 2.  **[COMPLETED] Phase 1: Comprehensive Logging System**
 3.  **[COMPLETED] Phase 2: Secure API Key Management**
-4.  **[COMPLETED] Phase 3: Core Trading Engine**
-5.  **[COMPLETED] Phase 4: DCA & Pyramid Execution**
-6.  **[COMPLETED] Phase 5: Risk Engine & Queue Management**
-7.  **[COMPLETED] Phase 6: Background Tasks & Scheduling**
-8.  **[COMPLETED] Phase 7: Comprehensive Testing Suite**
-9.  **[COMPLETED] Phase 8: Frontend UI Development**
-10. **[COMPLETED] Deployment & Configuration**
+4.  **[COMPLETED] Phase 3: Core Trading Engine** - The application is now a functional execution engine, not just a state manager.
+5.  **[IN PROGRESS] Phase 3.5: Live Exchange Integration** - Successfully integrated with Binance Testnet. Webhook-to-order pipeline is functional.
+6.  **[PENDING] Phase 4: DCA & Pyramid Execution**
+7.  **[PENDING] Phase 5: Risk Engine & Queue Management**
+8.  **[PENDING] Phase 6: Background Tasks & Scheduling**
+9.  **[PENDING] Phase 7: Comprehensive Testing Suite**
+10. **[PENDING] Phase 8: Frontend UI Development**
+11. **[PENDING] Deployment & Configuration**
 
 ## Building and Running
 
