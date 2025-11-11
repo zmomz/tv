@@ -20,7 +20,7 @@ services:
     environment:
       - POSTGRES_DB=tv_engine_db
       - POSTGRES_USER=tv_user       
-      - POSTGRES_PASSWORD=***REDACTED*** 
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "5433:5432"
     volumes:

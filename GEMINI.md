@@ -1,5 +1,7 @@
 # Project: Execution Engine
 
+For a detailed, step-by-step implementation plan, see `upgrading_plan.md`.
+
 ## Project Overview
 
 This project is a fully automated trading execution engine with an integrated web UI. It's designed to receive TradingView webhooks, execute complex grid-based trading strategies (including pyramids and DCA), manage risk autonomously, and provide a real-time monitoring dashboard.
@@ -28,41 +30,6 @@ Following the detailed `upgrading_plan.md`.
 
 ## Building and Running
 
-### Backend
-
-1.  **Navigate to the backend directory:**
-    ```bash
-    cd backend
-    ```
-2.  **Install dependencies (assuming a virtual environment is active):**
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **Run the development server:**
-    ```bash
-    uvicorn main:app --reload
-    ```
-4.  **Verify the backend is running:**
-    ```bash
-    curl http://localhost:8000/health
-    ```
-
-### Frontend
-
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd frontend
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Run the development server:**
-    ```bash
-    npm start
-    ```
-    The application should be available at `http://localhost:3000`.
-
 ### Docker
 
 The entire application can be orchestrated using Docker Compose.
@@ -71,6 +38,42 @@ The entire application can be orchestrated using Docker Compose.
     ```bash
     docker-compose up --build
     ```
+
+## Key Commands
+
+- **Run Backend Tests:**
+  ```bash
+  docker-compose exec app pytest
+  ```
+- **Run Backend Linting:**
+  ```bash
+  docker-compose exec app ruff check .
+  ```
+- **Generate a Database Migration:**
+  ```bash
+  docker-compose exec app alembic revision --autogenerate -m "Your migration message"
+  ```
+- **Apply Database Migrations:**
+  ```bash
+  docker-compose exec app alembic upgrade head
+  ```
+
+## API Quick Reference
+
+- **Register a New User:**
+  ```bash
+  curl -X POST -H "Content-Type: application/json" -d '{"username": "testuser", "email": "test@example.com", "password": "Password123", "role": "trader"}' http://localhost:8000/api/auth/register
+  ```
+- **Login and Get Token:**
+  ```bash
+  curl -X POST -H "Content-Type: application/json" -d '{"email": "test@example.com", "password": "Password123"}' http://localhost:8000/api/auth/login
+  ```
+- **Simulate a "New Entry" Webhook:**
+  ```bash
+  # Replace {user_id} with a valid user ID
+  USER_ID="your-user-id-here"
+  curl -X POST -H "Content-Type: application/json" -d '{"secret": "test", "tv": {"symbol": "BTC/USDT", "exchange": "binance"}, "execution_intent": {"action": "buy", "amount": 0.001, "strategy": "grid"}}' "http://localhost:8000/api/webhook/$USER_ID"
+  ```
 
 ## Development Conventions
 

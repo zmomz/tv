@@ -10,28 +10,46 @@ The current application has a functional backend for state management, a basic U
 
 ## 2. Current Application State
 
-This section provides a clear summary of the application's current capabilities and limitations.
+This section provides a clear summary of the application's current capabilities and limitations, intended as a handover document for any developer or AI assistant.
 
 ### What is Working:
-- **Webhook Processing:** The backend can receive and validate TradingView webhooks.
-- **State Management:** It correctly creates and stores records for `PositionGroups` and `Pyramids` in the PostgreSQL database.
-- **Execution Pool & Queue:** The system enforces a maximum number of live positions and queues new signals when the limit is reached.
-- **Risk Engine Foundation:** The basic logic for identifying losing trades and potential offsetting winners is in place.
-- **Basic UI:** The React frontend can connect to the backend, fetch the list of all position groups, and display them in a simple table.
-- **Dockerization:** The entire stack (backend, frontend, database) is containerized and runs via a single `docker-compose` command.
+
+- **End-to-End Trading Flow:** The application has a functional end-to-end pipeline. It can receive a user-specific webhook, look up that user's encrypted API keys, connect to an exchange (specifically the Binance testnet), and execute a real market order.
+
+- **Multi-User System & Security:**
+    - **Authentication:** A full-featured authentication system is in place (`/app/api/auth.py`). Users can register, log in, and receive JWTs. Passwords are securely hashed using `bcrypt`.
+    - **Authorization:** The `ExchangeConfig` model (`/app/models/key_models.py`) is tied to a `user_id`, ensuring users can only access their own API keys.
+    - **Secure API Key Management:** The `/app/api/keys.py` endpoint allows users to add exchange configurations. The API key and secret are encrypted at rest using Fernet symmetric encryption (`/app/services/encryption_service.py`) before being stored in the database.
+
+- **Webhook Ingestion Engine:**
+    - **User-Specific Endpoint:** The webhook endpoint is now user-specific (`POST /api/webhook/{user_id}`), which is the primary mechanism for identifying the user sending the signal.
+    - **Signal Processing:** The `signal_processor` service (`/app/services/signal_processor.py`) validates incoming payloads, requiring an `exchange` to be specified in the `tv` data block. It correctly classifies signals for "new_entry" based on the `strategy: "grid"` field.
+    - **Dynamic & Asynchronous:** The entire webhook processing pipeline is asynchronous, leveraging FastAPI's concurrency to handle multiple incoming signals in parallel without blocking.
+
+- **Core Trading & Exchange Logic:**
+    - **Live Exchange Integration:** The `ExchangeManager` (`/app/services/exchange_manager.py`) uses the `ccxt` library to establish a live connection to an exchange. It is successfully configured to use the Binance testnet (`set_sandbox_mode(True)`).
+    - **Order Execution:** The `place_order` method in `ExchangeManager` can successfully execute market orders. The system has been tested by placing a `BTC/USDT` market buy order on the Binance testnet.
+    - **State Management:** The `PositionGroupManager` (`/app/services/position_manager.py`) correctly manages the state of a trade.
+        - It creates a `PositionGroup` record in the database with a `status` of `"waiting"`.
+        - It then attempts to place the initial order via the `ExchangeManager`.
+        - Upon successful execution, it updates the `PositionGroup` status to `"live"`.
+        - If the order fails, it updates the status to `"failed"`.
+
+- **Database & Migrations:**
+    - **Relational Integrity:** The database schema correctly links `PositionGroup` records to `ExchangeConfig` records, which are in turn linked to `User` records.
+    - **Alembic Migrations:** The project uses Alembic for database migrations. The migration history is up-to-date with the latest schema changes.
+
+- **Dockerization:** The entire stack (backend, frontend, database, redis) is containerized and runs reliably via a single `docker-compose` command. The persistent Docker networking issues have been resolved by disabling IPv6 in the Docker daemon configuration.
 
 ### What is Missing (The Gaps):
-- **Core Trading Logic:** The application is a **state manager**, not an **execution engine**. It does not place any real orders on an exchange.
-    - **No DCA/Pyramid Execution:** It does not calculate or place the required grid of DCA orders.
-    - **No Take-Profit (TP) Logic:** The TP manager is a placeholder and does not monitor prices or close trades.
-    - **No Exit Logic:** It does not handle exit signals from TradingView.
-- **Advanced Features:**
-    - **Sophisticated Queue Priority:** The queue is currently FIFO (First-In-First-Out) and lacks the advanced priority ranking.
-    - **Incomplete Risk Engine:** The risk engine only checks the loss threshold and does not implement timers, pyramid counts, or precise partial-closing logic.
-- **Comprehensive UI:** The UI is a proof-of-concept and lacks the vast majority of required features:
-    - No dashboard, detailed DCA view, risk panel, queue manager, logs viewer, or settings panel.
-- **Configuration:** All settings are managed via `.env` files, not a user-friendly UI with a JSON backend as required.
-- **Security & Logging:** API keys are stored in plaintext, and logging is done via basic `print` statements.
+
+- **DCA & Pyramid Order Execution:** This is the most significant gap. The system only places the **initial entry order**.
+    - The logic for calculating and placing the subsequent grid of DCA (Dollar Cost Averaging) orders is not implemented. The `calculate_dca_orders` and `place_pyramid_orders` methods are placeholders.
+- **Order Persistence:** The details of the successful exchange order (order ID, price, quantity, fees, etc.) are currently only printed to the log. They are **not stored in the database**. The `DCAOrder` model exists, but it is not being populated. This is critical for tracking, TP, and risk management.
+- **Take-Profit (TP) & Exit Logic:** The `take_profit_service` is a placeholder. There is no logic to monitor the price of an open position or to execute take-profit orders. The system also does not handle "exit" signals from TradingView.
+- **Incomplete Risk Engine & Queue:** The `risk_engine` and `queue_manager` services are still foundational placeholders and do not contain the advanced logic outlined in the plan.
+- **Basic UI:** The React frontend is a proof-of-concept and has not been updated to reflect any of the backend changes. It lacks all major features, including a dashboard, detailed position view, risk panel, or settings.
+- **Asynchronous Database Calls:** While the API endpoints are `async`, the underlying database calls are still using the synchronous SQLAlchemy session (`db.query`, `db.commit`). To achieve true non-blocking performance, these need to be converted to use an `AsyncSession`.
 
 ---
 
@@ -212,10 +230,11 @@ Create these exact models:
 **PositionGroup:**
 - `id`: UUID
 - `user_id`: UUID
+- `exchange_config_id`: UUID (foreign key to `exchange_configs.id`)
 - `exchange`: String(50)
 - `symbol`: String(20)
 - `timeframe`: String(10)
-- `status`: Enum('waiting','live','partially_filled','closing','closed')
+- `status`: Enum('waiting','live','partially_filled','closing','closed', 'failed')
 - `entry_signal`: JSON - Store original webhook data
 - `created_at`: DateTime
 - `updated_at`: DateTime
@@ -232,32 +251,76 @@ Create these exact models:
 - `status`: Enum('pending','filled','cancelled','failed')
 - `exchange_order_id`: String(100) (nullable)
 
+**Pyramid:**
+- `id`: UUID
+- `position_group_id`: UUID
+- `pyramid_level`: Integer
+- `status`: Enum('pending', 'active', 'closed', 'failed')
+- `created_at`: DateTime
+- `updated_at`: DateTime
+
 ### Step 3.2: Exchange Manager Service
 **File:** `backend/app/services/exchange_manager.py`
 
 Implement exactly these methods:
-- `get_balance(exchange: str, user_id: UUID) -> dict`
-- `place_order(exchange: str, user_id: UUID, symbol: str, side: str, order_type: str, quantity: decimal, price: decimal = None) -> dict`
-- `cancel_order(exchange: str, user_id: UUID, symbol: str, order_id: str) -> bool`
-- `get_order_status(exchange: str, user_id: UUID, symbol: str, order_id: str) -> dict`
-- `get_precision_rules(exchange: str, symbol: str) -> dict`
+- `__aenter__`: Connects to the exchange using `ccxt` and sets sandbox mode if required.
+- `get_current_price(symbol: str) -> Decimal`: Fetches the latest ticker price.
+- `create_market_order(symbol: str, side: str, amount: Decimal)`: Places a market order.
+- `place_order(...)`: Wrapper for placing different order types.
+- `__aexit__`: Closes the exchange connection.
 
-### Step 3.3: Precision Validation Service
-**File:** `backend/app/services/precision_service.py`
+### Step 3.3: Webhook Processing & Signal Classification
+**File:** `backend/app/api/webhooks.py`
+**File:** `backend/app/services/signal_processor.py`
 
-Implement exactly these methods:
-- `validate_and_adjust_order(exchange: str, symbol: str, side: str, quantity: decimal, price: decimal) -> tuple[decimal, decimal]`
-- `fetch_precision_info(exchange: str, symbol: str) -> dict`
-- `calculate_min_notional(quantity: decimal, price: decimal) -> decimal`
+- **Endpoint:** `POST /api/webhook/{user_id:uuid}`
+- **Validation:** The `signal_processor` must validate that the payload contains `tv.exchange`.
+- **Classification:** A signal is classified as `"new_entry"` if `execution_intent.strategy` is `"grid"`.
 
-### Step 3.4: Webhook Processing
-**File:** `backend/app/services/webhook_service.py`
+### Data Structures
+- **Processed Signal (from `signal_processor`):**
+  ```json
+  {
+    "classification": "new_entry",
+    "original_payload": { "...original webhook data..." },
+    "is_valid": true,
+    "exchange": "binance"
+  }
+  ```
 
-Implement exactly these methods:
-- `process_tradingview_webhook(webhook_data: dict, user_id: UUID) -> PositionGroup`
-- `validate_webhook_signature(payload: dict, signature: str) -> bool`
-- `create_position_group_from_signal(signal: dict, user_id: UUID) -> PositionGroup`
-- `add_pyramid_to_group(position_group_id: UUID, signal: dict) -> PositionGroup`
+### Acceptance Criteria
+- ✅ Webhook endpoint is user-specific and rejects requests for non-existent users.
+- ✅ `signal_processor` correctly extracts the `exchange` from the payload.
+- ✅ A "new_entry" signal correctly triggers the position creation flow.
+- ✅ `ExchangeManager` can be instantiated and connects to the specified exchange.
+- ✅ All dummy data logic is removed from the webhook processing flow.
+
+---
+
+## PHASE 3.5: LIVE EXCHANGE INTEGRATION
+**Status:** IN PROGRESS
+
+### Description
+This phase covers the implementation of the actual order execution logic, connecting the application's internal state to a live (or testnet) exchange.
+
+### Step 3.5.1: Position Manager Refactor
+**File:** `backend/app/services/position_manager.py`
+
+- **`create_group` Method:**
+    - Sets the initial `PositionGroup.status` to `"waiting"`.
+    - Calls `place_initial_order` to trigger the execution.
+- **`place_initial_order` Method:**
+    - Extracts order parameters (symbol, side, amount) from the signal.
+    - Calls `exchange_manager.place_order`.
+    - On success: Updates `PositionGroup.status` to `"live"` and `Pyramid.status` to `"active"`.
+    - On failure: Updates both statuses to `"failed"` and re-raises the exception.
+
+### Acceptance Criteria
+- ✅ When a "new_entry" webhook is received, the `place_initial_order` method is called.
+- ✅ A real market order is successfully placed on the exchange (verified on Binance testnet).
+- ✅ The `PositionGroup` and `Pyramid` statuses are correctly updated to `"live"` and `"active"` after a successful order.
+- ✅ If the exchange order fails, the statuses are updated to `"failed"`.
+- ✅ The API response for a new webhook is `"Position group created and pending execution"`, not `"New position opened"`.
 
 ---
 
