@@ -1,14 +1,16 @@
 import uuid
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal # Added this import
 from typing import Dict, Any, Optional
 import asyncio
 import json
+from uuid import UUID
+ # Added this import
 
 import redis.asyncio as redis
 from sqlalchemy.orm import Session
 
-from ..services import exchange_manager
+from ..services.exchange_manager import get_exchange # Modified import
 from ..core.config import settings # Assuming settings will provide REDIS_URL
 
 # Global Redis client instance (or managed via FastAPI dependency)
@@ -17,7 +19,7 @@ redis_client: Optional[redis.Redis] = None
 async def get_redis_client() -> redis.Redis:
     global redis_client
     if redis_client is None:
-        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis_client = await redis.from_url(settings.REDIS_URL, decode_responses=True)
     return redis_client
 
 class PrecisionService:
@@ -33,8 +35,11 @@ class PrecisionService:
         """
         Fetches precision rules from the exchange and caches them.
         """
+        # TODO: Pass actual user_id dynamically. For now, using a dummy UUID for testing.
+        dummy_user_id = UUID('00000000-0000-0000-0000-000000000001')
         try:
-            precision_rules = await exchange_manager.get_precision_rules(db, exchange, symbol)
+            async with get_exchange(db, exchange, dummy_user_id) as exchange_manager_instance:
+                precision_rules = await exchange_manager_instance.get_precision_rules(symbol)
             cache_key = await self._get_cache_key(exchange, symbol)
             await self.redis.set(cache_key, json.dumps(precision_rules), ex=self.cache_expiry_seconds)
             print(f"Cached precision rules for {exchange}:{symbol}")

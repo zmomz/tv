@@ -52,6 +52,20 @@ class ExchangeManager:
         else:
             raise NotImplementedError(f"Order type '{order_type}' is not supported.")
 
+    async def get_precision_rules(self, symbol: str) -> dict:
+        """Fetches and returns precision rules for a given symbol."""
+        markets = await self.exchange.load_markets()
+        market = markets.get(symbol)
+        if not market:
+            raise ValueError(f"Market for symbol {symbol} not found on {self.exchange_name}")
+
+        return {
+            'amount': market['precision']['amount'],
+            'price': market['precision']['price'],
+            'min_amount': market['limits']['amount']['min'],
+            'min_notional': market['limits']['cost']['min'] if 'cost' in market['limits'] else None
+        }
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.exchange:
             await self.exchange.close()

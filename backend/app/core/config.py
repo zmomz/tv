@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # Database Settings
     DATABASE_URL: str
+    POSTGRES_PASSWORD: str
 
     # Security Settings
     JWT_SECRET: str

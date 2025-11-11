@@ -171,6 +171,22 @@ Follow this checklist to diagnose common issues.
 *   **Component Composition:** Prefer using and composing the built-in MUI components (`<Button>`, `<TextField>`, `<Card>`, etc.) over creating custom-styled elements from scratch.
 *   **Styling:** For minor, one-off style adjustments, use the `sx` prop. For creating reusable, styled components, use the `styled()` utility.
 
+### Pytest
+
+*   **Fixtures for Setup & Mocks:** Use `@pytest.fixture` for all test setup, including creating mock objects. This keeps tests clean, readable, and focused on the logic being tested.
+*   **`pytest-asyncio` for Async Tests:**
+    *   All asynchronous tests must be decorated with `@pytest.mark.asyncio`.
+    *   Configure `pytest.ini` with `[pytest]\nasyncio_mode = auto` to ensure the asyncio event loop is managed correctly by the test runner.
+*   **Mocking with `unittest.mock`:**
+    *   Use `unittest.mock.patch` to replace dependencies (like services or external clients) within the scope of a test.
+    *   **Crucially for async code:** Use `unittest.mock.AsyncMock`.
+    *   **Mocking `await` calls:** To mock `await some_async_function()`, ensure the mock is an `AsyncMock` and set its `return_value` directly to the final, resolved value you expect. The `AsyncMock` wrapper makes the method call itself awaitable. For example: `mock_redis.get.return_value = 'some_value'`. A `TypeError` during an `await` call often means the mock is incorrectly returning another mock object instead of a final value.
+    *   **Mocking `async with` Context Managers:** This is complex and a common point of failure. The most reliable method is to create a simple, local class that correctly implements `async def __aenter__(self)` and `async def __aexit__(self, ...)` and returns the desired mock object from `__aenter__`. Then, patch the function that returns the context manager to return an instance of this simple, real class. This avoids the pitfalls of trying to configure `__aenter__` on a pure `AsyncMock`.
+*   **Debugging Failing Tests:** When a test fails, especially with mocks:
+    *   Read the full traceback. Errors like `TypeError: object X can't be used in 'await' expression` are a strong clue that a mock is returning another mock instead of a value.
+    *   Don't hesitate to temporarily add `print(type(my_variable))` to the *application code* being tested to see exactly what the mock is providing at runtime. This was critical in solving our `precision_service` test failures.
+*   **Assertions:** Use simple, clear `assert` statements. Pytest's rich assertion introspection provides detailed failure messages without needing special `assertEqual` methods.
+
 ### AI Assistant Protocol
 
 *   **Verification First:** Before starting a work session, verify the current state (running processes, git status, directory structure).

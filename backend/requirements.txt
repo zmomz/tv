@@ -16,4 +16,5 @@ cryptography
 ccxt
 pytest
 pytest-mock
+pytest-asyncio
 bcrypt
