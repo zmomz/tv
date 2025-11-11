@@ -171,6 +171,23 @@ Follow this checklist to diagnose common issues.
 *   **Component Composition:** Prefer using and composing the built-in MUI components (`<Button>`, `<TextField>`, `<Card>`, etc.) over creating custom-styled elements from scratch.
 *   **Styling:** For minor, one-off style adjustments, use the `sx` prop. For creating reusable, styled components, use the `styled()` utility.
 
+### Integration Testing (`pytest`)
+
+Integration tests are crucial for verifying that different parts of the application work together correctly. They are located in the `/backend/tests/integration` directory.
+
+#### Database Fixture Best Practices
+*   **Problem:** Integration tests fail with `relation "users" does not exist` or other database errors because the test database is not being created or the schema is not being applied correctly before the tests run.
+*   **Solution:** A robust, session-scoped `db_engine` fixture is the solution. It should:
+    1.  Connect to a default database (e.g., `postgres`) first.
+    2.  Create a dedicated test database (e.g., `tv_engine_db_test`).
+    3.  Connect to the new test database.
+    4.  **Crucially, use `Base.metadata.create_all(bind=engine)` to create all tables directly from the SQLAlchemy models.** This is more reliable for tests than running Alembic migrations.
+    5.  Yield the engine to the tests.
+    6.  In the teardown phase, call `Base.metadata.drop_all(bind=engine)` and then drop the entire test database to ensure a clean state for the next run.
+    7.  Handle database URL parsing carefully to isolate the database name for creation/deletion commands.
+
+---
+
 ### Testing Guidelines (`pytest`)
 
 Testing is a critical part of our development process. All new business logic must be accompanied by comprehensive unit tests.

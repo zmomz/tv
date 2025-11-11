@@ -2,13 +2,15 @@
 
 ## 1. Introduction
 
-This document outlines the development plan to upgrade the application to be fully compliant with the detailed **Execution Engine Scope of Work (SoW)**. It supersedes the previous, more generic plan. Every phase and step described herein is a direct translation of a requirement from the SoW.
+This document outlines the development plan to upgrade the application to be fully compliant with the detailed **Execution Engine Scope of Work (SoW)**. It serves as the primary roadmap for development, tracking our progress from the initial foundation to a feature-complete, robust, and well-tested application.
 
 ---
 
 ## 2. Current Application State
 
-The application currently has a functional foundation for user management, webhook ingestion, and single-order execution on the Binance testnet. The unit tests for the `precision_service.py` have been successfully completed and are passing, and unit tests for `validation_service.py` are also passing. However, it still lacks the sophisticated, domain-specific logic that defines the project. The primary gaps are the absence of the detailed Grid Strategy, the multi-conditional Risk Engine, the prioritized Queue, and the comprehensive UI as specified in the SoW. This plan will close those gaps.
+The application's core backend business logic is now substantially complete. All major services, including the Precision & Validation Engine, Advanced Grid & Order Management, Execution Pool & Queue, and the Risk Engine, have been implemented and are covered by a strong suite of unit tests.
+
+The project is now transitioning from pure unit-level development to a broader focus on integration and API-level testing. The immediate next step is to build a robust integration testing suite to verify that all services interact correctly with each other and the database. Following this, development will focus on building the API and UI layers as specified in the SoW.
 
 ---
 
@@ -60,8 +62,8 @@ Build the robust, pre-trade validation and precision adjustment service. This is
 - **Phase 3 Complete:**
     - The `pool_manager.py` has been implemented and its unit tests are passing.
     - The `queue_service.py` has been implemented with `add_to_queue`, `handle_signal_replacement`, and `promote_from_queue`, and its unit tests are passing.
-- **Phase 4 In Progress:**
-    - Work is currently beginning on the `risk_engine.py`.
+- **Phase 4 Complete:**
+    - The `risk_engine.py` has been implemented with activation logic, position ranking, and mitigation execution. Its unit tests are passing.
 
 ---
 
@@ -214,6 +216,37 @@ Build the sophisticated, multi-conditional Risk Engine to offset losing trades w
 
 ---
 
+## PHASE 4.5: INTEGRATION TESTING
+**Priority:** HIGH
+**SoW Ref:** N/A (Internal Quality Assurance)
+
+### Description
+Build a suite of integration tests to verify that the core services of the application work together as expected, interact correctly with a real database, and handle realistic data flows. This phase is critical to ensure backend stability before developing the UI.
+
+### Step 4.5.1: Establish the Integration Test Foundation
+**File:** `backend/tests/integration/conftest.py`
+- **Create Database Fixture:** Implement a `pytest` fixture to provide a real, transactional database session. This fixture will manage the test database schema and ensure data isolation between tests.
+- **Create Data Fixtures:** Implement fixtures to pre-populate the database with necessary test data, such as a test `User` and `ExchangeConfig`.
+- **Note:** Establishing a reliable test database fixture proved challenging. The final, robust solution involves connecting to a default `postgres` database to create and drop a dedicated `_test` database for the test session. The schema is managed directly via SQLAlchemy's `Base.metadata.create_all()` and `Base.metadata.drop_all()` for maximum reliability, bypassing potential Alembic pathing issues in the test environment.
+
+### Step 4.5.2: Test the Core Trading Flow (Happy Path)
+**File:** `backend/tests/integration/test_trading_flow.py`
+- **`test_webhook_to_live_position`:**
+    1.  **Arrange:** Use fixtures to create a test user and mock the external exchange API.
+    2.  **Act:** Send a simulated "New Entry" webhook payload to the `/api/webhook/{user_id}` endpoint using FastAPI's `TestClient`.
+    3.  **Assert:** Verify that the correct `PositionGroup` and `DCAOrder` records are created in the database and that the mock exchange's order placement methods were called correctly.
+
+### Step 4.5.3: Test the Execution Pool & Queue Flow
+**File:** `backend/tests/integration/test_queue_flow.py`
+- **`test_pool_full_queues_signal_and_promotes`:**
+    1.  **Arrange:** Configure the execution pool to be full (e.g., `max_open_groups = 1`) and create a "live" position to fill it.
+    2.  **Act 1 (Queueing):** Send a new webhook signal to the API.
+    3.  **Assert 1:** Verify that a `QueueEntry` is created in the database and no new position is opened.
+    4.  **Act 2 (Promotion):** Close the initial position and manually trigger the promotion logic.
+    5.  **Assert 2:** Verify that the `QueueEntry` is removed and a new `PositionGroup` is created from the queued signal.
+
+---
+
 ## PHASE 5: CONFIGURATION MANAGEMENT & UI
 **Priority:** MEDIUM
 **SoW Ref:** 7.1 (Config Panel), 10
@@ -302,10 +335,11 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 3. Phase 2: ADVANCED GRID & ORDER MANAGEMENT - COMPLETED
 4. Phase 3: EXECUTION POOL & QUEUE - COMPLETED
 5. Phase 4: THE RISK ENGINE - COMPLETED
-6. Phase 5: CONFIGURATION MANAGEMENT & UI - IN PROGRESS
-7. Phase 6: COMPREHENSIVE UI & DASHBOARD - PENDING
-8. Phase 7: PERFORMANCE ANALYTICS & REPORTING - PENDING
-9. Phase 8: DEPLOYMENT & PACKAGING - PENDING
+6. Phase 4.5: INTEGRATION TESTING - IN PROGRESS
+7. Phase 5: CONFIGURATION MANAGEMENT & UI - PENDING
+8. Phase 6: COMPREHENSIVE UI & DASHBOARD - PENDING
+9. Phase 7: PERFORMANCE ANALYTICS & REPORTING - PENDING
+10. Phase 8: DEPLOYMENT & PACKAGING - PENDING
 
 ---
 

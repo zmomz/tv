@@ -26,6 +26,7 @@ from backend.app.models import user_models
 from backend.app.models import log_models
 from backend.app.models import key_models
 from backend.app.models import trading_models
+from backend.app.models import risk_analytics_models
 
 target_metadata = Base.metadata
 

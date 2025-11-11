@@ -80,7 +80,7 @@ class PositionGroupManager:
 
         return new_pyramid
 
-    def calculate_dca_orders(self, pyramid: models.Pyramid, config: Dict[str, Any]) -> List[models.DCALeg]:
+    def calculate_dca_orders(self, pyramid: models.Pyramid, config: Dict[str, Any]) -> List[models.DCAOrder]:
         """Generate DCA orders based on grid config"""
         # TODO: Implement DCA calculation logic
         pass
