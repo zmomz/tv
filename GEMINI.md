@@ -36,26 +36,26 @@ The entire application can be orchestrated using Docker Compose.
 
 1.  **Build and start all services:**
     ```bash
-    docker-compose up --build
+    docker compose up --build
     ```
 
 ## Key Commands
 
 - **Run Backend Tests:**
   ```bash
-  docker-compose exec app pytest
+  docker compose exec app pytest
   ```
 - **Run Backend Linting:**
   ```bash
-  docker-compose exec app ruff check .
+  docker compose exec app ruff check .
   ```
 - **Generate a Database Migration:**
   ```bash
-  docker-compose exec app alembic revision --autogenerate -m "Your migration message"
+  docker compose exec app alembic revision --autogenerate -m "Your migration message"
   ```
 - **Apply Database Migrations:**
   ```bash
-  docker-compose exec app alembic upgrade head
+  docker compose exec app alembic upgrade head
   ```
 
 ## API Quick Reference
