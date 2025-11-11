@@ -225,3 +225,64 @@ Finalize the application, create installation packages, and write comprehensive 
 - Write user-facing documentation covering installation, configuration, and troubleshooting.
 
 This rewritten plan is a high-fidelity blueprint of the client's request. It is ambitious, detailed, and leaves no room for ambiguity. This is the plan we will follow.
+
+---
+
+## IMPLEMENTATION ORDER - CRITICAL PATH
+1. Phase 0: DATA MODELS & CORE STRUCTURE - IN PROGRESS
+2. Phase 1: PRECISION & VALIDATION ENGINE - PENDING
+3. Phase 2: ADVANCED GRID & ORDER MANAGEMENT - PENDING
+4. Phase 3: EXECUTION POOL & QUEUE - PENDING
+5. Phase 4: THE RISK ENGINE - PENDING
+6. Phase 5: CONFIGURATION MANAGEMENT & UI - PENDING
+7. Phase 6: COMPREHENSIVE UI & DASHBOARD - PENDING
+8. Phase 7: PERFORMANCE ANALYTICS & REPORTING - PENDING
+9. Phase 8: DEPLOYMENT & PACKAGING - PENDING
+
+---
+
+## SUCCESS CRITERIA - EXACT REQUIREMENTS
+### Data Models & Core Structure:
+- ✅ All SoW-specified database models (`PositionGroup`, `Pyramid`, `DCAOrder`, `QueueEntry`, `RiskAnalysis`, `TradeAnalytics`) are created with correct fields and relationships.
+- ✅ Pydantic models for the entire configuration structure (SoW Section 10) are defined.
+
+### Precision & Validation Engine:
+- ✅ Precision metadata (tick size, step size, min notional) is fetched and cached from exchanges.
+- ✅ `validate_and_adjust_order` function correctly rounds prices/quantities and blocks/holds orders if precision data is missing or rules are violated.
+
+### Advanced Grid & Order Management:
+- ✅ `calculate_dca_grid` correctly calculates DCA legs based on price gap and capital weight.
+- ✅ `place_and_persist_grid_orders` creates `DCAOrder` records with `pending` status and places limit orders.
+- ✅ `monitor_order_fills` background task updates `DCAOrder` statuses upon fill.
+- ✅ `TakeProfitService` implements `Per-Leg`, `Aggregate`, and `Hybrid` TP modes.
+- ✅ `handle_tv_exit_signal` cancels unfilled orders and market closes positions on exit webhook.
+
+### Execution Pool & Queue:
+- ✅ `ExecutionPoolManager` correctly limits active `PositionGroup`s and releases slots only on full closure.
+- ✅ `QueueService` correctly adds signals to the queue, handles replacements, and promotes based on SoW 5.3 priority rules.
+
+### The Risk Engine:
+- ✅ `evaluate_risk_conditions` background task runs periodically.
+- ✅ `should_activate_risk_engine` checks all SoW 4.2 activation conditions.
+- ✅ `find_and_rank_losing_positions` and `find_and_rank_winning_positions` implement SoW 4.4 ranking.
+- ✅ `execute_risk_mitigation` calculates `required_usd` from the selected losing trade, selects winners, and executes partial closing orders.
+- ✅ All risk actions are logged in `RiskAnalysis` table.
+
+### Configuration Management & UI:
+- ✅ Backend API (`/api/config`) for GET/PUT configuration is implemented.
+- ✅ Frontend Settings Panel (SoW 7.2 F) allows full UI editing, validation, live preview, and "Apply & Restart Engine" functionality.
+- ✅ Configuration is stored in a local JSON file and synced in real-time.
+
+### Comprehensive UI & Dashboard:
+- ✅ Backend API endpoints provide real-time data for all UI screens (SoW 7.2 A-E).
+- ✅ Frontend components for Live Dashboard, Positions & Pyramids, Risk Engine Panel, Waiting Queue, and Advanced Log Viewer are built as specified.
+
+### Performance Analytics & Reporting:
+- ✅ `aggregate_trade_data` background task populates `TradeAnalytics` table with SoW-specified metrics.
+- ✅ Analytics API (`/api/analytics`) serves aggregated data.
+- ✅ Frontend Performance Dashboard displays all PnL metrics, equity curve, win/loss stats, etc.
+
+### Deployment & Packaging:
+- ✅ End-to-end testing is completed with 90%+ backend test coverage.
+- ✅ Self-contained executable packages for Windows and macOS are built.
+- ✅ User-facing documentation for installation, configuration, and troubleshooting is provided.
