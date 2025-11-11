@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     ENCRYPTION_KEY: str
     REDIS_URL: str
+    PRECISION_CACHE_EXPIRY_SECONDS: int = 3600
 
     class Config:
         env_file = BASE_DIR.parent / ".env"
