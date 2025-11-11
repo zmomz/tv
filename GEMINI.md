@@ -1,6 +1,6 @@
 # Project: Execution Engine
 
-For a detailed, step-by-step implementation plan, see `upgrading_plan.md`.
+For a detailed, step-by-step implementation plan with data structures and acceptance criteria, see `upgrading_plan.md`.
 
 ## Project Overview
 
@@ -13,31 +13,54 @@ This project is a fully automated trading execution engine with an integrated we
 *   **Database:** PostgreSQL
 *   **Deployment:** Docker
 
-## Current Plan
-Following the detailed `upgrading_plan.md`.
+## High-Level Architecture
 
-1.  **[COMPLETED] Phase 0: Multi-User Authentication & Security Foundation**
-2.  **[COMPLETED] Phase 1: Comprehensive Logging System**
-3.  **[COMPLETED] Phase 2: Secure API Key Management**
-4.  **[COMPLETED] Phase 3: Core Trading Engine** - The application is now a functional execution engine, not just a state manager.
-5.  **[IN PROGRESS] Phase 3.5: Live Exchange Integration** - Successfully integrated with Binance Testnet. Webhook-to-order pipeline is functional.
-6.  **[PENDING] Phase 4: DCA & Pyramid Execution**
-7.  **[PENDING] Phase 5: Risk Engine & Queue Management**
-8.  **[PENDING] Phase 6: Background Tasks & Scheduling**
-9.  **[PENDING] Phase 7: Comprehensive Testing Suite**
-10. **[PENDING] Phase 8: Frontend UI Development**
-11. **[PENDING] Deployment & Configuration**
+The application is a multi-container Docker setup orchestrated by `docker compose`.
+
+1.  **Frontend:** A React application that communicates with the backend via a REST API.
+2.  **Backend:** A Python FastAPI application that serves the API. It contains all business logic.
+3.  **Database:** A PostgreSQL database that stores all persistent data (users, positions, keys, etc.).
+4.  **Redis:** Used for caching and potentially for managing distributed tasks or locks in the future.
+5.  **Exchange:** The backend communicates with external cryptocurrency exchanges (like the Binance testnet) via the `ccxt` library to execute trades.
+
+The primary data flow for a trade is: `TradingView Webhook` -> `Backend API` -> `Signal Processor` -> `Position Manager` -> `Exchange Manager` -> `Binance Testnet`.
+
+## Project Structure
+
+This map explains the purpose of the most important directories in the backend.
+
+```
+backend/app/
+├── api/         # Defines all HTTP API endpoints (FastAPI routers).
+├── services/    # Contains all business logic (e.g., placing orders, processing signals).
+├── models/      # Defines the database schema (SQLAlchemy models).
+├── schemas/     # Defines the data shapes for API requests/responses (Pydantic models).
+├── db/          # Database session management.
+├── core/        # Core application configuration.
+└── middleware/  # Custom FastAPI middleware (e.g., for authentication).
+```
 
 ## Building and Running
 
-### Docker
-
-The entire application can be orchestrated using Docker Compose.
+The entire application is orchestrated using Docker Compose.
 
 1.  **Build and start all services:**
     ```bash
     docker compose up --build
     ```
+
+## Environment Variable Reference
+
+All configuration is managed via the `.env` file. The `.env.example` file serves as a template.
+
+| Variable | Description | Used By |
+|---|---|---|
+| `DATABASE_URL` | The connection string for the PostgreSQL database. | `backend` |
+| `POSTGRES_PASSWORD` | The password for the PostgreSQL database user. | `docker-compose.yml` |
+| `JWT_SECRET` | The secret key for encoding and decoding JWTs for user authentication. | `backend` |
+| `ENCRYPTION_KEY` | The secret key for encrypting and decrypting user API keys at rest. | `backend` |
+| `LOG_LEVEL` | The logging level for the application. | `backend` |
+| `REDIS_URL` | The connection string for the Redis instance. | `backend` |
 
 ## Key Commands
 
@@ -57,6 +80,28 @@ The entire application can be orchestrated using Docker Compose.
   ```bash
   docker compose exec app alembic upgrade head
   ```
+
+## Debugging Workflow
+
+Follow this checklist to diagnose common issues.
+
+1.  **API returns 500 Internal Server Error:**
+    - Check the backend logs for a Python traceback:
+      ```bash
+      docker compose logs app --tail=50
+      ```
+2.  **Any container fails to start:**
+    - Check the logs for that specific container.
+      ```bash
+      # Replace <service_name> with 'app', 'db', 'frontend', etc.
+      docker compose logs <service_name>
+      ```
+3.  **Database connection issues:**
+    - Verify that the `db` container is running: `docker compose ps`.
+    - Ensure the `DATABASE_URL` in your `.env` file correctly points to the `db` service (e.g., `postgresql://tv_user:your_password@db:5432/tv_engine_db`).
+4.  **Webhook fails with 404 Not Found:**
+    - Double-check the endpoint URL. The correct format is `/api/webhook/{user_id}`.
+    - Verify the `user_id` exists in the database.
 
 ## API Quick Reference
 
@@ -84,6 +129,47 @@ The entire application can be orchestrated using Docker Compose.
 *   **Database:** All database queries must use the SQLAlchemy ORM. Raw SQL is not permitted.
 *   **Testing:** Tests should be written *before* implementing complex logic. The target code coverage is 80%+.
 *   **Git:** Commits should be made after each working feature is complete, not just at the end of the day.
+
+### Core Patterns
+
+*   **Dependency Injection:** FastAPI's dependency injection is used extensively. Database sessions (`db: Session = Depends(get_db)`) and services (`pool_manager: ExecutionPoolManager = Depends(get_pool_manager)`) are injected into API endpoints. **Never create your own database session in an endpoint.**
+*   **Service Layer:** All business logic is encapsulated within the `services` directory. API endpoints in the `api` directory should be lightweight and delegate all real work to the services.
+*   **Async Operations:** For performance, all API endpoints that perform I/O (database calls, exchange API calls) are defined with `async def`.
+
+## Technology Best Practices
+
+### FastAPI
+
+*   **Routers:** Organize endpoints into logical groups using `APIRouter`. Each file in `app/api/` should correspond to a specific resource (e.g., `auth.py`, `keys.py`).
+*   **Explicit Status Codes:** Use explicit status codes for responses (e.g., `status_code=status.HTTP_201_CREATED`) to be clear about the operation's result.
+*   **Error Handling:** Use FastAPI's `HTTPException` for standard HTTP errors. For custom or unhandled exceptions, use a custom exception handler middleware.
+
+### Pydantic
+
+*   **Explicit Schemas:** Every API endpoint must define its request body and response model using Pydantic schemas located in `app/schemas/`. Do not use raw `dict`s.
+*   **Specific Types:** Use Pydantic's specific types for validation where possible (e.g., `EmailStr`, `UUID`).
+*   **Request vs. Response Models:** Create separate schemas for creating/updating data (e.g., `UserCreate`) and for reading data (`UserRead`). This is critical to prevent accidentally exposing sensitive fields like password hashes in API responses.
+
+### Alembic (Database Migrations)
+
+*   **Autogenerate & Review:** Always generate migrations with `alembic revision --autogenerate`. After generation, **you must manually review the migration file** to ensure it is correct and does not contain unintended changes.
+*   **Atomic Migrations:** Each migration should represent a single, atomic change to the schema. Avoid bundling multiple unrelated changes into one migration.
+*   **Never Edit Applied Migrations:** Never modify a migration file that has already been committed and potentially applied by others. If a change is needed, create a new migration.
+*   **Test Downgrades:** Ensure the `downgrade()` function in a migration is tested and correctly reverts the schema.
+
+### React
+
+*   **Functional Components & Hooks:** All new components must be functional components using Hooks (`useState`, `useEffect`, etc.). Avoid class components.
+*   **Component Structure:** Keep components small and focused on a single responsibility. If a component becomes too large or complex, break it down into smaller, reusable components.
+*   **State Management:** For simple, local state, use `useState`. For state that needs to be shared across multiple components, use the Context API (`useContext`). For complex, application-wide state, a dedicated library like Redux or Zustand should be considered. Avoid "prop drilling."
+*   **Services:** All API interactions should be handled in a dedicated service layer (`src/services/api.js`), not directly within components.
+
+### Google Material UI (MUI) - *Future Use*
+
+*   **Theming:** All styling (colors, typography, spacing) must be managed through a central theme file using `createTheme` and `ThemeProvider`. Do not use hardcoded colors or styles in components.
+*   **Grid System:** Use the `<Grid>` component for all page layouts to ensure responsiveness.
+*   **Component Composition:** Prefer using and composing the built-in MUI components (`<Button>`, `<TextField>`, `<Card>`, etc.) over creating custom-styled elements from scratch.
+*   **Styling:** For minor, one-off style adjustments, use the `sx` prop. For creating reusable, styled components, use the `styled()` utility.
 
 ### AI Assistant Protocol
 
