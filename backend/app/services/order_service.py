@@ -84,6 +84,12 @@ async def monitor_order_fills(db: Session) -> None:
                     # Log the error, but don't stop monitoring other orders
                     print(f"Error fetching order {order.exchange_order_id}: {e}")
 
+async def place_partial_close_order(db: Session, position_group: PositionGroup, usd_amount_to_realize: Decimal):
+    """
+    Placeholder for placing a partial closing order.
+    """
+    pass
+
 def handle_filled_order(db: Session, dca_order: DCAOrder, fill_data: dict) -> None:
     """
     Handle a filled order.

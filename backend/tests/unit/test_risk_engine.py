@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from backend.app.services.risk_engine import RiskEngine
 from backend.app.models.trading_models import PositionGroup, Pyramid
+from backend.app.models.risk_analytics_models import RiskAnalysis
 from backend.app.core.config import settings
 
 @pytest.fixture
@@ -172,12 +173,6 @@ async def test_find_and_rank_winning_positions(mock_db_session, mock_user_id):
     pg_winner2.unrealized_pnl_percent = Decimal("3.0")
     pg_winner2.unrealized_pnl_usd = Decimal("1000.0") # Higher USD profit
 
-    pg_loser = MagicMock(spec=PositionGroup)
-    pg_loser.id = UUID('77777777-7777-7777-7777-777777777777')
-    pg_loser.created_at = datetime.utcnow() - timedelta(days=7)
-    pg_loser.unrealized_pnl_percent = Decimal("-2.0")
-    pg_loser.unrealized_pnl_usd = Decimal("-200.0")
-
     # Mock the database query to return only the winning position groups after filtering
     mock_db_session.query.return_value.filter.return_value.all.return_value = [
         pg_winner1, pg_winner2
@@ -194,3 +189,49 @@ async def test_find_and_rank_winning_positions(mock_db_session, mock_user_id):
     assert len(winning_positions) == 2
     assert winning_positions[0] == pg_winner2
     assert winning_positions[1] == pg_winner1
+
+@pytest.mark.asyncio
+async def test_execute_risk_mitigation(mock_db_session, mock_user_id):
+    """
+    Test that execute_risk_mitigation correctly calculates the required offset,
+    executes partial closing orders, and logs the operation.
+    """
+    # Mock losing position
+    losing_pg = MagicMock(spec=PositionGroup)
+    losing_pg.id = UUID('11111111-1111-1111-1111-111111111111')
+    losing_pg.unrealized_pnl_usd = Decimal("-1000.0")
+
+    # Mock winning positions
+    winning_pg1 = MagicMock(spec=PositionGroup)
+    winning_pg1.id = UUID('55555555-5555-5555-5555-555555555555')
+    winning_pg1.unrealized_pnl_usd = Decimal("800.0")
+
+    winning_pg2 = MagicMock(spec=PositionGroup)
+    winning_pg2.id = UUID('66666666-6666-6666-6666-666666666666')
+    winning_pg2.unrealized_pnl_usd = Decimal("1500.0")
+
+    winning_positions = [winning_pg2, winning_pg1] # Already sorted by find_winning_positions
+
+    with patch('backend.app.services.risk_engine.place_partial_close_order') as mock_place_order, \
+         patch('backend.app.services.risk_engine.RiskAnalysis') as MockRiskAnalysis:
+        
+        engine = RiskEngine(mock_db_session)
+        await engine.execute_risk_mitigation(losing_pg, winning_positions)
+
+        # Assertions
+        # 1. Calculate required_usd
+        required_usd = abs(losing_pg.unrealized_pnl_usd)
+        assert required_usd == Decimal("1000.0")
+
+        # 2. Select winners and execute orders
+        # Should use winning_pg2 to cover the loss
+        mock_place_order.assert_called_once_with(
+            db=mock_db_session,
+            position_group=winning_pg2,
+            usd_amount_to_realize=required_usd
+        )
+
+        # 3. Log the operation
+        MockRiskAnalysis.assert_called_once()
+        mock_db_session.add.assert_called_once()
+        mock_db_session.commit.assert_called_once()

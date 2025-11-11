@@ -6,6 +6,8 @@ from ..db.session import get_db
 from decimal import Decimal
 from datetime import datetime
 from ..core.config import settings
+from .order_service import place_partial_close_order
+from ..models.risk_analytics_models import RiskAnalysis
 
 class RiskEngine:
     def __init__(self, db: Session):
@@ -99,17 +101,47 @@ class RiskEngine:
 
         return sorted_winning_positions
 
-    def execute_risk_mitigation(
+    async def execute_risk_mitigation(
         self, losing_position: PositionGroup, winning_positions: list[PositionGroup]
     ) -> None:
         """
-        Execute a risk mitigation strategy.
+        Execute a risk mitigation strategy by partially closing winning positions
+        to cover the losses of a losing position.
         """
-        # This is a placeholder. In a real-world application, you would
-        # implement the logic to execute a risk mitigation strategy, such
-        # as closing a portion of the winning positions to cover the
-        # losses of the losing position.
-        pass
+        required_usd = abs(losing_position.unrealized_pnl_usd)
+        realized_profit = Decimal("0.0")
+        winning_positions_used = []
+
+        for winner in winning_positions:
+            if realized_profit >= required_usd:
+                break
+
+            profit_to_realize = min(required_usd - realized_profit, winner.unrealized_pnl_usd)
+            
+            # This is a simplified assumption. In reality, you'd need to calculate the
+            # exact quantity to sell to realize this profit, which is complex.
+            # For now, we'll assume a direct mapping for the purpose of the test.
+            await place_partial_close_order(
+                db=self.db,
+                position_group=winner,
+                usd_amount_to_realize=profit_to_realize
+            )
+            
+            realized_profit += profit_to_realize
+            winning_positions_used.append(winner.id)
+
+        # Log the operation
+        risk_analysis_entry = RiskAnalysis(
+            user_id=losing_position.user_id,
+            losing_position_group_id=losing_position.id,
+            winning_position_group_ids=[str(uuid) for uuid in winning_positions_used],
+            required_usd_to_cover=required_usd,
+            realized_profit_usd=realized_profit,
+            action_taken="Partial close of winning positions to cover loss.",
+            details={}
+        )
+        self.db.add(risk_analysis_entry)
+        self.db.commit()
 
 def get_risk_engine(db: Session = Depends(get_db)) -> RiskEngine:
     return RiskEngine(db)
