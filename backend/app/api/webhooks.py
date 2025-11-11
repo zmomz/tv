@@ -49,7 +49,7 @@ async def receive_webhook(
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     # --- User and Exchange Config Lookup ---
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.get(User, user_id) # Use get() for primary key lookup
     if not user:
         await log_webhook(payload=payload, status="error", error_message=f"User not found: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")

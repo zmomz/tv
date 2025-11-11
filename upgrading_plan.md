@@ -217,7 +217,7 @@ Build the sophisticated, multi-conditional Risk Engine to offset losing trades w
 ---
 
 ## PHASE 4.5: INTEGRATION TESTING
-**Priority:** HIGH
+**Priority:** CRITICAL
 **SoW Ref:** N/A (Internal Quality Assurance)
 
 ### Description
@@ -227,14 +227,20 @@ Build a suite of integration tests to verify that the core services of the appli
 **File:** `backend/tests/integration/conftest.py`
 - **Create Database Fixture:** Implement a `pytest` fixture to provide a real, transactional database session. This fixture will manage the test database schema and ensure data isolation between tests.
 - **Create Data Fixtures:** Implement fixtures to pre-populate the database with necessary test data, such as a test `User` and `ExchangeConfig`.
-- **Note:** Establishing a reliable test database fixture proved challenging. The final, robust solution involves connecting to a default `postgres` database to create and drop a dedicated `_test` database for the test session. The schema is managed directly via SQLAlchemy's `Base.metadata.create_all()` and `Base.metadata.drop_all()` for maximum reliability, bypassing potential Alembic pathing issues in the test environment.
+- **Note on Session Isolation:** Establishing a reliable test database fixture that correctly shares a transactional session with the FastAPI `TestClient` proved to be the most complex challenge of this phase. The final, robust solution is documented in `GEMINI.md` and involves a single fixture that:
+    1. Creates a database connection and begins a transaction.
+    2. Creates a SQLAlchemy session from that transaction.
+    3. Overrides the application's `get_db` dependency to yield this specific session.
+    4. Yields both the `TestClient` and the session to the test function.
+    5. Rolls back the transaction at the end of the test to ensure isolation.
+    This pattern is the **only** way to guarantee that the test function and the API endpoint operate within the same transactional context.
 
 ### Step 4.5.2: Test the Core Trading Flow (Happy Path)
 **File:** `backend/tests/integration/test_trading_flow.py`
 - **`test_webhook_to_live_position`:**
-    1.  **Arrange:** Use fixtures to create a test user and mock the external exchange API.
-    2.  **Act:** Send a simulated "New Entry" webhook payload to the `/api/webhook/{user_id}` endpoint using FastAPI's `TestClient`.
-    3.  **Assert:** Verify that the correct `PositionGroup` and `DCAOrder` records are created in the database and that the mock exchange's order placement methods were called correctly.
+    1.  **Arrange:** Use the shared transaction fixture to get a `TestClient` and a `db_session`. Create a test user and exchange config directly in the test function, using `db_session.flush()` to persist them within the transaction. Mock the external exchange API.
+    2.  **Act:** Send a simulated "New Entry" webhook payload to the `/api/webhook/{user_id}` endpoint.
+    3.  **Assert:** Verify that the correct `PositionGroup` and `DCAOrder` records are created in the database (using the same `db_session`) and that the mock exchange's order placement methods were called correctly.
 
 ### Step 4.5.3: Test the Execution Pool & Queue Flow
 **File:** `backend/tests/integration/test_queue_flow.py`

@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 from app.db.base import Base
 from app.core.config import settings
 from app.dependencies import get_db
+from app.schemas.auth_schemas import UserCreate
+from app.services.auth_service import create_user
 from main import app
 
 # Import all models to ensure they are registered with Base.metadata
@@ -49,41 +51,44 @@ def db_engine():
     engine.dispose()
     with default_engine.connect() as conn:
         conn.execute(text("COMMIT"))
-        conn.execute(text(f"DROP DATABASE {settings.DATABASE_URL.path[1:]}_test"))
+        # Terminate all connections to the test database
+        conn.execute(text(f"""
+            SELECT pg_terminate_backend(pg_stat_activity.pid)
+            FROM pg_stat_activity
+            WHERE pg_stat_activity.datname = '{db_name}_test'
+              AND pid <> pg_backend_pid();
+        """))
+        conn.execute(text(f"DROP DATABASE {db_name}_test"))
     default_engine.dispose()
 
 
 @pytest.fixture(scope="function")
-def db_session(db_engine):
+def client(db_engine):
     """
-    Creates a new database session for each test, wrapped in a transaction.
+    Creates a FastAPI TestClient that uses a single transaction for the
+    entire test. The transaction is rolled back after the test is finished.
+    
+    Also provides the transactional session to the test.
     """
     connection = db_engine.connect()
     transaction = connection.begin()
-
+    
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=connection)
     session = SessionLocal()
 
-    yield session
+    def override_get_db():
+        yield session
 
+    app.dependency_overrides[get_db] = override_get_db
+    
+    with TestClient(app) as test_client:
+        yield test_client, session
+        test_client.close()
+
+    app.dependency_overrides.clear()
     session.close()
     transaction.rollback()
     connection.close()
 
 
-@pytest.fixture(scope="function")
-def client(db_session):
-    """
-    Creates a new FastAPI TestClient for each test.
-    """
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            db_session.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    with TestClient(app) as c:
-        yield c
 

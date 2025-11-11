@@ -9,6 +9,7 @@ from backend.app.services.queue_manager import QueueManager, get_queue_manager
 from backend.app.tasks.log_cleanup import scheduler
 import asyncio
 import time
+import os
 
 app = FastAPI()
 
@@ -39,7 +40,8 @@ async def main_loop_task():
 async def startup_event():
     init_db_session()
     scheduler.start()
-    asyncio.create_task(main_loop_task())
+    if os.environ.get("TESTING") != "True":
+        asyncio.create_task(main_loop_task())
 
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(position_groups.router, prefix="/api")

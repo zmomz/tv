@@ -13,8 +13,6 @@ def create_user(db: Session, user_in: UserCreate) -> User:
         role=user_in.role
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
     return db_user
 
 

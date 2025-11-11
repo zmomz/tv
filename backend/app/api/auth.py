@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..db.session import get_db
@@ -88,3 +89,10 @@ def reset_password(token: str, new_password: str, db: Session = Depends(get_db))
     # verify the password reset token, and if it's valid, update the
     # user's password in the database.
     return {"success": True}
+
+@router.get("/users/{user_id}", response_model=UserOut)
+def get_user(user_id: uuid.UUID, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
