@@ -1,568 +1,227 @@
-# Upgrading Plan: From Skeleton to Full Execution Engine
+# Upgrading Plan: From Foundation to SoW-Compliant Execution Engine
 
 ## 1. Introduction
 
-This document outlines the development plan to upgrade the current application from its foundational skeleton to the complete, feature-rich automated trading execution engine as defined in the original Scope of Work.
-
-The current application has a functional backend for state management, a basic UI for displaying data, and is fully dockerized. The core trading logic, advanced features, and comprehensive UI are the key areas for development.
+This document outlines the development plan to upgrade the application to be fully compliant with the detailed **Execution Engine Scope of Work (SoW)**. It supersedes the previous, more generic plan. Every phase and step described herein is a direct translation of a requirement from the SoW.
 
 ---
 
 ## 2. Current Application State
 
-This section provides a clear summary of the application's current capabilities and limitations, intended as a handover document for any developer or AI assistant.
-
-### What is Working:
-
-- **End-to-End Trading Flow:** The application has a functional end-to-end pipeline. It can receive a user-specific webhook, look up that user's encrypted API keys, connect to an exchange (specifically the Binance testnet), and execute a real market order.
-
-- **Multi-User System & Security:**
-    - **Authentication:** A full-featured authentication system is in place (`/app/api/auth.py`). Users can register, log in, and receive JWTs. Passwords are securely hashed using `bcrypt`.
-    - **Authorization:** The `ExchangeConfig` model (`/app/models/key_models.py`) is tied to a `user_id`, ensuring users can only access their own API keys.
-    - **Secure API Key Management:** The `/app/api/keys.py` endpoint allows users to add exchange configurations. The API key and secret are encrypted at rest using Fernet symmetric encryption (`/app/services/encryption_service.py`) before being stored in the database.
-
-- **Webhook Ingestion Engine:**
-    - **User-Specific Endpoint:** The webhook endpoint is now user-specific (`POST /api/webhook/{user_id}`), which is the primary mechanism for identifying the user sending the signal.
-    - **Signal Processing:** The `signal_processor` service (`/app/services/signal_processor.py`) validates incoming payloads, requiring an `exchange` to be specified in the `tv` data block. It correctly classifies signals for "new_entry" based on the `strategy: "grid"` field.
-    - **Dynamic & Asynchronous:** The entire webhook processing pipeline is asynchronous, leveraging FastAPI's concurrency to handle multiple incoming signals in parallel without blocking.
-
-- **Core Trading & Exchange Logic:**
-    - **Live Exchange Integration:** The `ExchangeManager` (`/app/services/exchange_manager.py`) uses the `ccxt` library to establish a live connection to an exchange. It is successfully configured to use the Binance testnet (`set_sandbox_mode(True)`).
-    - **Order Execution:** The `place_order` method in `ExchangeManager` can successfully execute market orders. The system has been tested by placing a `BTC/USDT` market buy order on the Binance testnet.
-    - **State Management:** The `PositionGroupManager` (`/app/services/position_manager.py`) correctly manages the state of a trade.
-        - It creates a `PositionGroup` record in the database with a `status` of `"waiting"`.
-        - It then attempts to place the initial order via the `ExchangeManager`.
-        - Upon successful execution, it updates the `PositionGroup` status to `"live"`.
-        - If the order fails, it updates the status to `"failed"`.
-
-- **Database & Migrations:**
-    - **Relational Integrity:** The database schema correctly links `PositionGroup` records to `ExchangeConfig` records, which are in turn linked to `User` records.
-    - **Alembic Migrations:** The project uses Alembic for database migrations. The migration history is up-to-date with the latest schema changes.
-
-- **Dockerization:** The entire stack (backend, frontend, database, redis) is containerized and runs reliably via a single `docker-compose` command. The persistent Docker networking issues have been resolved by disabling IPv6 in the Docker daemon configuration.
-
-### What is Missing (The Gaps):
-
-- **DCA & Pyramid Order Execution:** This is the most significant gap. The system only places the **initial entry order**.
-    - The logic for calculating and placing the subsequent grid of DCA (Dollar Cost Averaging) orders is not implemented. The `calculate_dca_orders` and `place_pyramid_orders` methods are placeholders.
-- **Order Persistence:** The details of the successful exchange order (order ID, price, quantity, fees, etc.) are currently only printed to the log. They are **not stored in the database**. The `DCAOrder` model exists, but it is not being populated. This is critical for tracking, TP, and risk management.
-- **Take-Profit (TP) & Exit Logic:** The `take_profit_service` is a placeholder. There is no logic to monitor the price of an open position or to execute take-profit orders. The system also does not handle "exit" signals from TradingView.
-- **Incomplete Risk Engine & Queue:** The `risk_engine` and `queue_manager` services are still foundational placeholders and do not contain the advanced logic outlined in the plan.
-- **Basic UI:** The React frontend is a proof-of-concept and has not been updated to reflect any of the backend changes. It lacks all major features, including a dashboard, detailed position view, risk panel, or settings.
-- **Asynchronous Database Calls:** While the API endpoints are `async`, the underlying database calls are still using the synchronous SQLAlchemy session (`db.query`, `db.commit`). To achieve true non-blocking performance, these need to be converted to use an `AsyncSession`.
+The application currently has a functional foundation for user management, webhook ingestion, and single-order execution on the Binance testnet. However, it lacks the sophisticated, domain-specific logic that defines the project. The primary gaps are the absence of the detailed Grid Strategy, the multi-conditional Risk Engine, the prioritized Queue, and the comprehensive UI as specified in the SoW. This plan will close those gaps.
 
 ---
 
-# ULTRA-DETAILED TRADING ENGINE DEVELOPMENT PLAN
-## ZERO-AMBIGUITY SPECIFICATION FOR AI CODING ASSISTANT
+# ULTRA-DETAILED, SoW-ALIGNED DEVELOPMENT PLAN
 
-## PHASE 0: MULTI-USER AUTHENTICATION & SECURITY FOUNDATION
-**Duration:** 2 Weeks | **Priority:** CRITICAL
-
-### Step 0.1: Database Schema Creation
-**File:** `backend/app/models/user_models.py`
-
-Create SQLAlchemy models with exact field specifications:
-
-**User model fields:**
-- `id`: UUID (primary_key, auto-generate)
-- `email`: String(255), unique, not null
-- `username`: String(100), unique, not null
-- `password_hash`: String(255), not null
-- `role`: Enum('viewer', 'trader', 'manager', 'admin'), default='viewer'
-- `is_active`: Boolean, default=True
-- `created_at`: DateTime, default=now()
-- `last_login`: DateTime, nullable
-
-**UserSession model fields:**
-- `session_id`: UUID (primary_key)
-- `user_id`: UUID (foreign_key)
-- `created_at`: DateTime
-- `expires_at`: DateTime
-- `ip_address`: String(45)
-- `user_agent`: String(500)
-
-### Step 0.2: Password Security Service
-**File:** `backend/app/services/auth_service.py`
-
-Implement exactly these functions:
-- `hash_password(password: str) -> str`: Use bcrypt with 12 rounds
-- `verify_password(password: str, hashed: str) -> bool`: Use bcrypt check
-- `generate_password_reset_token() -> str`: 32 character random string
-- `validate_password_strength(password: str) -> bool`: Minimum 8 chars, 1 uppercase, 1 number
-
-### Step 0.3: JWT Token Management
-**File:** `backend/app/services/jwt_service.py`
-
-Implement exactly these functions:
-- `create_access_token(user_id: UUID, email: str, role: str) -> str`: 24 hour expiry
-- `verify_token(token: str) -> dict`: Return payload or raise Exception
-- `refresh_token(old_token: str) -> str`: Create new token if old token < 1 hour from expiry
-
-### Step 0.4: Authentication API Endpoints
-**File:** `backend/app/api/auth.py`
-
-Create these exact endpoints:
-- `POST /api/auth/register`: `{email, username, password, role}` → `{user, token}`
-- `POST /api/auth/login`: `{email, password}` → `{user, token}`
-- `POST /api/auth/logout`: `{token}` → `{success}`
-- `POST /api/auth/refresh`: `{token}` → `{new_token}`
-- `POST /api/auth/forgot-password`: `{email}` → `{success}`
-- `POST /api/auth/reset-password`: `{token, new_password}` → `{success}`
-
-### Step 0.5: Permission Middleware
-**File:** `backend/app/middleware/auth_middleware.py`
-
-Create these exact decorators:
-- `@require_authenticated`: Any logged-in user
-- `@require_role('trader')`: Trader or higher
-- `@require_role('admin')`: Admin only
-
----
-
-## PHASE 1: COMPREHENSIVE LOGGING SYSTEM
-**Duration:** 1.5 Weeks | **Priority:** HIGH
-
-### Step 1.1: Log Database Schema
-**File:** `backend/app/models/log_models.py`
-
-Create these exact models:
-
-**SystemLog:**
-- `id`: UUID
-- `timestamp`: DateTime
-- `level`: Enum('DEBUG','INFO','WARNING','ERROR','CRITICAL')
-- `category`: Enum('SECURITY','TRADING','SYSTEM','RISK','API')
-- `user_id`: UUID (nullable)
-- `message`: Text
-- `details`: JSON (nullable)
-- `ip_address`: String(45) (nullable)
-
-**AuditLog:**
-- `id`: UUID
-- `timestamp`: DateTime
-- `user_id`: UUID
-- `action`: String(100)
-- `resource`: String(100)
-- `resource_id`: String(100) (nullable)
-- `details`: JSON (nullable)
-- `ip_address`: String(45)
-
-### Step 1.2: Structured Logging Service
-**File:** `backend/app/services/logging_service.py`
-
-Implement exactly these methods:
-- `log_debug(category, message, user_id=None, details=None)`
-- `log_info(category, message, user_id=None, details=None)`
-- `log_warning(category, message, user_id=None, details=None)`
-- `log_error(category, message, user_id=None, details=None)`
-- `log_critical(category, message, user_id=None, details=None)`
-- `audit_log(user_id, action, resource, resource_id=None, details=None)`
-
-### Step 1.3: Log Management API
-**File:** `backend/app/api/logs.py`
-
-Create these exact endpoints:
-- `GET /api/logs/system`: Query params: `level`, `category`, `start_date`, `end_date`, `limit=100`
-- `GET /api/logs/audit`: Query params: `user_id`, `action`, `start_date`, `end_date`, `limit=100`
-- `DELETE /api/logs/system/{days_old}`: Delete logs older than X days (admin only)
-- `POST /api/logs/export`: Export logs as CSV/JSON (admin only)
-
-### Step 1.4: Log Rotation & Retention
-**File:** `backend/app/tasks/log_cleanup.py`
-
-Create scheduled task that runs daily:
-- Delete system logs older than 30 days
-- Delete audit logs older than 90 days
-- Compress logs older than 7 days
-
----
-
-## PHASE 2: SECURE API KEY MANAGEMENT
-**Duration:** 1 Week | **Priority:** HIGH
-
-### Step 2.1: Key Storage Schema
-**File:** `backend/app/models/key_models.py`
-
-Create these exact models:
-
-**ExchangeConfig:**
-- `id`: UUID
-- `user_id`: UUID (foreign_key)
-- `exchange_name`: String(50)
-- `mode`: Enum('testnet','live')
-- `api_key_encrypted`: Text
-- `api_secret_encrypted`: Text
-- `is_enabled`: Boolean, default=False
-- `is_validated`: Boolean, default=False
-- `last_validated`: DateTime (nullable)
-- `created_at`: DateTime
-
-### Step 2.2: Encryption Service
-**File:** `backend/app/services/encryption_service.py`
-
-Implement exactly these methods:
-- `encrypt_data(plaintext: str, key: str) -> str`: Use AES-256-GCM
-- `decrypt_data(ciphertext: str, key: str) -> str`: Use AES-256-GCM
-- `generate_master_key() -> str`: 32 byte random key
-- `derive_key_from_password(password: str, salt: str) -> str`: Use PBKDF2 with 100,000 iterations
-
-### Step 2.3: Key Management API
-**File:** `backend/app/api/keys.py`
-
-Create these exact endpoints (all require authentication):
-- `POST /api/keys/{exchange}`: `{mode, api_key, api_secret}` → Store encrypted
-- `GET /api/keys`: List user's exchange configurations
-- `PUT /api/keys/{exchange}/validate`: Test connection, update validation status
-- `DELETE /api/keys/{exchange}`: Remove exchange configuration
-- `PUT /api/keys/{exchange}/mode`: `{mode}` → Switch between testnet/live
-
----
-
-## PHASE 3: CORE TRADING ENGINE
-**Duration:** 2 Weeks | **Priority:** HIGH
-
-### Step 3.1: Trading Database Schema
-**File:** `backend/app/models/trading_models.py`
-
-Create these exact models:
-
-**PositionGroup:**
-- `id`: UUID
-- `user_id`: UUID
-- `exchange_config_id`: UUID (foreign key to `exchange_configs.id`)
-- `exchange`: String(50)
-- `symbol`: String(20)
-- `timeframe`: String(10)
-- `status`: Enum('waiting','live','partially_filled','closing','closed', 'failed')
-- `entry_signal`: JSON - Store original webhook data
-- `created_at`: DateTime
-- `updated_at`: DateTime
-
-**DCAOrder:**
-- `id`: UUID
-- `position_group_id`: UUID
-- `pyramid_level`: Integer
-- `dca_level`: Integer
-- `expected_price`: Decimal(20,8)
-- `quantity`: Decimal(20,8)
-- `filled_price`: Decimal(20,8) (nullable)
-- `filled_quantity`: Decimal(20,8) (nullable)
-- `status`: Enum('pending','filled','cancelled','failed')
-- `exchange_order_id`: String(100) (nullable)
-
-**Pyramid:**
-- `id`: UUID
-- `position_group_id`: UUID
-- `pyramid_level`: Integer
-- `status`: Enum('pending', 'active', 'closed', 'failed')
-- `created_at`: DateTime
-- `updated_at`: DateTime
-
-### Step 3.2: Exchange Manager Service
-**File:** `backend/app/services/exchange_manager.py`
-
-Implement exactly these methods:
-- `__aenter__`: Connects to the exchange using `ccxt` and sets sandbox mode if required.
-- `get_current_price(symbol: str) -> Decimal`: Fetches the latest ticker price.
-- `create_market_order(symbol: str, side: str, amount: Decimal)`: Places a market order.
-- `place_order(...)`: Wrapper for placing different order types.
-- `__aexit__`: Closes the exchange connection.
-
-### Step 3.3: Webhook Processing & Signal Classification
-**File:** `backend/app/api/webhooks.py`
-**File:** `backend/app/services/signal_processor.py`
-
-- **Endpoint:** `POST /api/webhook/{user_id:uuid}`
-- **Validation:** The `signal_processor` must validate that the payload contains `tv.exchange`.
-- **Classification:** A signal is classified as `"new_entry"` if `execution_intent.strategy` is `"grid"`.
-
-### Data Structures
-- **Processed Signal (from `signal_processor`):**
-  ```json
-  {
-    "classification": "new_entry",
-    "original_payload": { "...original webhook data..." },
-    "is_valid": true,
-    "exchange": "binance"
-  }
-  ```
-
-### Acceptance Criteria
-- ✅ Webhook endpoint is user-specific and rejects requests for non-existent users.
-- ✅ `signal_processor` correctly extracts the `exchange` from the payload.
-- ✅ A "new_entry" signal correctly triggers the position creation flow.
-- ✅ `ExchangeManager` can be instantiated and connects to the specified exchange.
-- ✅ All dummy data logic is removed from the webhook processing flow.
-
----
-
-## PHASE 3.5: LIVE EXCHANGE INTEGRATION
-**Status:** IN PROGRESS
+## PHASE 0: DATA MODELS & CORE STRUCTURE
+**Priority:** CRITICAL
+**SoW Ref:** 1, 8, 10, 11
 
 ### Description
-This phase covers the implementation of the actual order execution logic, connecting the application's internal state to a live (or testnet) exchange.
+Establish the complete and final database schema and configuration structure required by the SoW. This ensures all future logic is built on a solid, compliant foundation.
 
-### Step 3.5.1: Position Manager Refactor
-**File:** `backend/app/services/position_manager.py`
+### Step 0.1: Finalize Trading Models
+**File:** `backend/app/models/trading_models.py`
+- **`PositionGroup`:** Add fields for `status`, `timeframe`, and store the original `entry_signal` as JSON.
+- **`Pyramid`:** Model to track the number of entries for a `PositionGroup`. Max 5 per group.
+- **`DCAOrder`:** Model to store each individual DCA leg with its `price_gap`, `capital_weight`, `tp_target`, `status`, `filled_price`, etc.
+- **`QueueEntry`:** Model for signals waiting in the queue, including `priority_score` and `replacement_count`.
 
-- **`create_group` Method:**
-    - Sets the initial `PositionGroup.status` to `"waiting"`.
-    - Calls `place_initial_order` to trigger the execution.
-- **`place_initial_order` Method:**
-    - Extracts order parameters (symbol, side, amount) from the signal.
-    - Calls `exchange_manager.place_order`.
-    - On success: Updates `PositionGroup.status` to `"live"` and `Pyramid.status` to `"active"`.
-    - On failure: Updates both statuses to `"failed"` and re-raises the exception.
+### Step 0.2: Create Risk & Analytics Models
+**File:** `backend/app/models/risk_models.py`, `backend/app/models/analytics_models.py`
+- **`RiskAnalysis`:** Table to log every decision made by the Risk Engine.
+- **`TradeAnalytics`:** Table to store aggregated performance data for closed trades (PnL, ROI, drawdown, etc.).
 
-### Acceptance Criteria
-- ✅ When a "new_entry" webhook is received, the `place_initial_order` method is called.
-- ✅ A real market order is successfully placed on the exchange (verified on Binance testnet).
-- ✅ The `PositionGroup` and `Pyramid` statuses are correctly updated to `"live"` and `"active"` after a successful order.
-- ✅ If the exchange order fails, the statuses are updated to `"failed"`.
-- ✅ The API response for a new webhook is `"Position group created and pending execution"`, not `"New position opened"`.
+### Step 0.3: Define Configuration Structure
+**File:** `backend/app/core/config_models.py`
+- Create Pydantic models that precisely match the structure defined in **SoW Section 10**. This includes nested models for `app`, `exchange`, `execution_pool`, `grid_strategy`, `risk_engine`, etc. This model will be the single source of truth for all engine settings.
 
 ---
 
-## PHASE 4: DCA & PYRAMID EXECUTION
-**Duration:** 1.5 Weeks | **Priority:** HIGH
+## PHASE 1: PRECISION & VALIDATION ENGINE
+**Priority:** HIGH
+**SoW Ref:** 3
 
-### Step 4.1: Grid Calculator Service
+### Description
+Build the robust, pre-trade validation and precision adjustment service. This is a critical step to ensure zero API rejections from the exchange.
+
+### Step 1.1: Precision Metadata Service
+**File:** `backend/app/services/precision_service.py`
+- **`fetch_and_cache_precision_rules`:** Create a background task that periodically fetches tick size, step size, min quantity, and min notional value for all relevant symbols from the exchange and caches them (e.g., in Redis).
+- **`get_precision`:** A function that retrieves the precision rules for a given symbol from the cache.
+
+### Step 1.2: Pre-Order Validation Logic
+**File:** `backend/app/services/validation_service.py`
+- **`validate_and_adjust_order`:** Before any order is placed, this function must:
+    1.  Check if precision data is available. If not, the signal must be **held (queued)** as per the SoW.
+    2.  Round the order price to the correct tick size.
+    3.  Round the order quantity to the correct step size.
+    4.  Verify the order meets the minimum notional value. If not, block and log the order.
+
+---
+
+## PHASE 2: ADVANCED GRID & ORDER MANAGEMENT
+**Priority:** CRITICAL
+**SoW Ref:** 2
+
+### Description
+Implement the complete grid trading logic, including DCA/Pyramid entries and the multi-mode Take-Profit system.
+
+### Step 2.1: SoW-Compliant Grid Calculation
 **File:** `backend/app/services/grid_calculator.py`
+- **`calculate_dca_grid`:** Based on the `grid_strategy` section of the configuration, calculate the exact price, quantity (based on capital weight), and TP target for each DCA leg.
 
-Implement exactly these methods:
-- `calculate_dca_levels(entry_price: decimal, dca_config: dict) -> list[dict]`
-- `calculate_position_size(total_risk_usd: decimal, dca_weights: list) -> list[decimal]`
-- `calculate_take_profit_prices(entry_prices: list[decimal], tp_percent: decimal) -> list[decimal]`
-
-### Step 4.2: Order Placement Service
+### Step 2.2: Persistent Order Placement Service
 **File:** `backend/app/services/order_service.py`
+- **`place_and_persist_grid_orders`:**
+    1.  For each calculated DCA leg, create a `DCAOrder` record in the database with `status: 'pending'`.
+    2.  Place a **limit order** for each leg.
+    3.  Update the `DCAOrder` record with the `exchange_order_id`.
+- **`monitor_order_fills` (Background Task):**
+    - Periodically query the exchange for the status of all `pending` orders and update their status in the database upon filling.
 
-Implement exactly these methods:
-- `place_dca_orders(position_group: PositionGroup) -> list[DCAOrder]`
-- `monitor_order_fills() -> None` - Background task
-- `handle_filled_order(dca_order: DCAOrder, fill_data: dict) -> None`
-- `cancel_pending_orders(position_group_id: UUID) -> None`
-
-### Step 4.3: Take Profit Manager
+### Step 2.3: Multi-Mode Take-Profit & Exit Engine
 **File:** `backend/app/services/take_profit_service.py`
-
-Implement exactly these methods:
-- `check_take_profit_conditions() -> None` - Background task
-- `execute_per_leg_tp(position_group: PositionGroup) -> None`
-- `execute_aggregate_tp(position_group: PositionGroup) -> None`
-- `execute_hybrid_tp(position_group: PositionGroup) -> None`
+- **`check_tp_conditions` (Background Task):**
+    - Implement the logic for all three TP modes as defined in SoW 2.4: `Per-Leg`, `Aggregate`, and `Hybrid`.
+    - When a TP condition is met, execute the appropriate closing order(s).
+- **`handle_tv_exit_signal`:**
+    - On receiving an `exit` webhook, immediately cancel all unfilled DCA limit orders and market close the entire position.
 
 ---
 
-## PHASE 5: RISK ENGINE & QUEUE MANAGEMENT
-**Duration:** 1.5 Weeks | **Priority:** MEDIUM
+## PHASE 3: EXECUTION POOL & QUEUE
+**Priority:** HIGH
+**SoW Ref:** 5
 
-### Step 5.1: Risk Engine Service
-**File:** `backend/app/services/risk_engine.py`
+### Description
+Implement the system for managing concurrent positions and prioritizing incoming signals according to the client's specific algorithm.
 
-Implement exactly these methods:
-- `evaluate_risk_conditions() -> None` - Background task
-- `should_activate_risk_engine(position_group: PositionGroup) -> bool`
-- `find_losing_positions(user_id: UUID) -> list[PositionGroup]`
-- `find_winning_positions(user_id: UUID) -> list[PositionGroup]`
-- `execute_risk_mitigation(losing_position: PositionGroup, winning_positions: list[PositionGroup]) -> None`
+### Step 3.1: Execution Pool Manager
+**File:** `backend/app/services/pool_manager.py`
+- Implement logic to track the number of active `PositionGroup`s.
+- A new position is only allowed if `active_groups < max_open_groups` from the config.
+- A slot is released only when a `PositionGroup` is fully closed. Pyramids and partial closes do not release slots.
 
-### Step 5.2: Queue Management Service
+### Step 3.2: SoW-Compliant Queue Service
 **File:** `backend/app/services/queue_service.py`
-
-Implement exactly these methods:
-- `add_to_queue(signal: dict, user_id: UUID) -> QueueEntry`
-- `promote_from_queue() -> QueueEntry`
-- `calculate_priority(queue_entry: QueueEntry) -> float`
-- `handle_signal_replacement(new_signal: dict, user_id: UUID) -> None`
-
----
-
-## PHASE 6: BACKGROUND TASKS & SCHEDULING
-**Duration:** 1 Week | **Priority:** MEDIUM
-
-### Step 6.1: Task Scheduler Setup
-**File:** `backend/app/services/task_scheduler.py`
-
-Implement exactly these scheduled tasks:
-- `monitor_order_fills`: Run every 10 seconds
-- `check_take_profit_conditions`: Run every 15 seconds
-- `evaluate_risk_conditions`: Run every 30 seconds
-- `cleanup_old_logs`: Run once per day at 2:00 AM
-- `validate_exchange_connections`: Run every 5 minutes
-
-### Step 6.2: Health Monitoring
-**File:** `backend/app/services/health_service.py`
-
-Implement exactly these methods:
-- `check_system_health() -> dict`
-- `check_exchange_health(user_id: UUID) -> dict`
-- `check_database_health() -> dict`
-- `get_performance_metrics() -> dict`
+- **`add_to_queue`:** If the execution pool is full, add the signal to the `QueueEntry` table.
+- **`handle_signal_replacement`:** If a new signal arrives for a symbol already in the queue, replace the old one and increment the `replacement_count`.
+- **`promote_from_queue`:** When a pool slot opens, this function must select the next signal based on the **exact priority rules from SoW 5.3**:
+    1.  Pyramid continuation of an active group.
+    2.  Deepest loss percentage.
+    3.  Highest replacement count.
+    4.  FIFO.
 
 ---
 
-## PHASE 7: COMPREHENSIVE TESTING SUITE
-**Duration:** 1.5 Weeks | **Priority:** HIGH
+## PHASE 4: THE RISK ENGINE
+**Priority:** HIGH
+**SoW Ref:** 4
 
-### Step 7.1: Unit Test Structure
-**File Structure:**
-```
-tests/
-├── unit/
-│   ├── test_auth_service.py
-│   ├── test_exchange_manager.py
-│   ├── test_precision_service.py
-│   ├── test_grid_calculator.py
-│   └── test_risk_engine.py
-├── integration/
-│   ├── test_api_endpoints.py
-│   ├── test_webhook_processing.py
-│   └── test_trading_flow.py
-└── conftest.py
-```
+### Description
+Build the sophisticated, multi-conditional Risk Engine to offset losing trades with profits from winners, exactly as specified.
 
-### Step 7.2: Test Fixtures & Mocks
-**File:** `tests/conftest.py`
+### Step 4.1: Activation Condition Logic
+**File:** `backend/app/services/risk_engine.py`
+- **`evaluate_risk_conditions` (Background Task):** This is the main loop of the Risk Engine.
+- **`should_activate_risk_engine`:** This function must check **all activation conditions from SoW 4.2**:
+    - All 5 pyramids received.
+    - Post-full waiting time has passed.
+    - Loss percent is below the threshold.
+    - (Optional) Trade age threshold is met.
+    - It must also respect the `timer_start_condition` from the config.
 
-Create these exact fixtures:
-- `mock_exchange_api`: Mock all exchange API calls
-- `test_user`: Create test user with trader role
-- `test_position_group`: Create sample position group
-- `mock_webhook_payload`: Sample TradingView webhook data
+### Step 4.2: Position Selection & Ranking
+- **`find_and_rank_losing_positions`:** Select the top losing trade based on the **exact priority from SoW 4.4**: 1) highest loss percent, 2) highest unrealized dollar loss, 3) oldest trade.
+- **`find_and_rank_winning_positions`:** Get a list of winning trades, ranked by highest profit in USD.
 
-### Step 7.3: Test Coverage Requirements
-- Achieve 90%+ code coverage
-- Test all error conditions
-- Test all edge cases
-- Test all permission scenarios
+### Step 4.3: Offset Execution Logic
+- **`execute_risk_mitigation`:**
+    1.  Calculate `required_usd` from the selected losing trade.
+    2.  Select up to `max_winners_to_combine` winning trades to cover the loss.
+    3.  Execute **partial closing orders** on the winning trades to realize just enough profit to cover `required_usd`.
+    4.  Log the entire operation in the `RiskAnalysis` table.
 
 ---
 
-## PHASE 8: FRONTEND UI DEVELOPMENT
-**Duration:** 2 Weeks | **Priority:** MEDIUM
+## PHASE 5: CONFIGURATION MANAGEMENT & UI
+**Priority:** MEDIUM
+**SoW Ref:** 7.1 (Config Panel), 10
 
-### Step 8.1: React Component Structure
-**File Structure:**
-```
-frontend/src/
-├── components/
-│   ├── auth/
-│   │   ├── Login.jsx
-│   │   ├── Register.jsx
-│   │   └── ForgotPassword.jsx
-│   ├── trading/
-│   │   ├── Dashboard.jsx
-│   │   ├── Positions.jsx
-│   │   └── OrderPanel.jsx
-│   ├── risk/
-│   │   ├── RiskEngine.jsx
-│   │   └── QueueManager.jsx
-│   └── admin/
-│       ├── UserManagement.jsx
-│       └── SystemLogs.jsx
-├── services/
-│   ├── api.js
-│   └── websocket.js
-└── hooks/
-    ├── useAuth.js
-    └── useWebSocket.js
-```
+### Description
+Build the backend API and frontend UI for managing all engine settings, with real-time sync to a local JSON file.
 
-### Step 8.2: API Service Layer
-**File:** `frontend/src/services/api.js`
+### Step 5.1: Configuration API
+**File:** `backend/app/api/config.py`
+- `GET /api/config`: Returns the current configuration JSON.
+- `PUT /api/config`: Receives a full configuration JSON, validates it against the Pydantic models, saves it to the local file, and triggers a hot-reload of the engine settings.
 
-Implement exactly these methods:
-- `auth.login(email, password)`
-- `auth.register(userData)`
-- `trading.getPositions()`
-- `trading.placeOrder(orderData)`
-- `risk.getQueue()`
-- `admin.getLogs()`
+### Step 5.2: Frontend Settings Panel
+**File:** `frontend/src/components/admin/Settings.jsx`
+- Build the UI as specified in **SoW 7.2 (F)**.
+- The UI must have sections for each category in the config (Exchange, Pool, Risk Engine, etc.).
+- It must include validation, a "Live Preview" of changes, and an "Apply & Restart Engine" button that calls the `PUT /api/config` endpoint.
 
 ---
 
-## DEPLOYMENT & CONFIGURATION
-**Duration:** 0.5 Weeks | **Priority:** LOW
+## PHASE 6: COMPREHENSIVE UI & DASHBOARD
+**Priority:** MEDIUM
+**SoW Ref:** 7
 
-### Step 9.1: Docker Configuration
-**File:** `docker-compose.yml`
-```yaml
-version: '3.8'
-services:
-  app:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/trading
-      - JWT_SECRET=your-secret-key
-    depends_on:
-      - db
-      - redis
-  
-  db:
-    image: postgres:13
-    environment:
-      - POSTGRES_DB=trading
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=pass
-  
-  redis:
-    image: redis:alpine
-```
+### Description
+Develop the full, multi-screen web UI for real-time monitoring and analytics, as detailed in the SoW.
 
-### Step 9.2: Environment Configuration
-**File:** `.env.example`
-```
-DATABASE_URL=postgresql://user:pass@localhost:5432/trading
-JWT_SECRET=your-jwt-secret-key
-ENCRYPTION_KEY=your-encryption-key
-LOG_LEVEL=INFO
-REDIS_URL=redis://localhost:6379
-```
+### Step 6.1: Backend API for UI Data
+**File:** `backend/app/api/dashboard.py`, `backend/app/api/positions.py`, etc.
+- Create all necessary API endpoints to provide real-time data for every widget and table specified in **SoW 7.2 (A-E)**. This includes data for the dashboard, positions table, risk panel, queue view, and logs.
+
+### Step 6.2: Frontend Component Development
+- **Live Dashboard:** Build the global overview screen.
+- **Positions & Pyramids View:** Build the main trading table with the expandable detailed DCA view.
+- **Risk Engine Panel:** Build the dedicated view for monitoring Risk Engine status and projections.
+- **Waiting Queue View:** Build the UI for the waiting queue with all required columns and actions.
+- **Advanced Log Viewer:** Build the full system event console with search, filtering, and color-coding.
 
 ---
 
-## IMPLEMENTATION ORDER - CRITICAL PATH
-1. Phase 0.1-0.5 - Authentication & Security - COMPLETED
-2. Phase 1.1-1.4 - Logging System - COMPLETED
-3. Phase 2.1-2.3 - API Key Management - COMPLETED
-4. Phase 3.1-3.4 - Core Trading Models & Services - COMPLETED
-5. Phase 3.5 - Live Exchange Integration - IN PROGRESS
-6. Phase 4.1-4.3 - DCA Execution - PENDING
-7. Phase 6.1-6.2 - Background Tasks - PENDING
-8. Phase 5.1-5.2 - Risk & Queue Management - PENDING
-9. Phase 7.1-7.3 - Testing Suite - PENDING
-10. Phase 8.1-8.2 - Frontend UI - PENDING
-11. Phase 9.1-9.2 - Deployment - PENDING
+## PHASE 7: PERFORMANCE ANALYTICS & REPORTING
+**Priority:** LOW
+**SoW Ref:** 7.1 (Performance Dashboard)
+
+### Description
+Implement the backend aggregation and frontend display for the detailed performance and portfolio dashboard.
+
+### Step 7.1: Analytics Aggregation Service
+**File:** `backend/app/services/analytics_service.py`
+- **`aggregate_trade_data` (Background Task):** A daily task to process closed trades and populate the `TradeAnalytics` table with all the metrics required by the SoW (PnL, ROI, win rate, drawdown, etc.).
+
+### Step 7.2: Analytics API
+**File:** `backend/app/api/analytics.py`
+- Create endpoints to serve the aggregated analytics data, including data formatted for the equity curve chart.
+
+### Step 7.3: Frontend Performance Dashboard
+**File:** `frontend/src/components/dashboard/Performance.jsx`
+- Build the UI to display all the PnL metrics, the equity curve, win/loss stats, and other KPIs as specified in the SoW.
 
 ---
 
-## SUCCESS CRITERIA - EXACT REQUIREMENTS
-### Authentication:
-- ✅ Users can register, login, logout
-- ✅ JWT tokens work with 24hr expiry
-- ✅ Role-based permissions enforce correctly
-- ✅ Password reset flow works
+## PHASE 8: DEPLOYMENT & PACKAGING
+**Priority:** LOW
+**SoW Ref:** 13.1
 
-### Trading:
-- ✅ TradingView webhooks processed correctly
-- ✅ DCA orders placed with precision validation
-- ✅ Take-profit triggers execute properly
-- ✅ Risk engine mitigates losses automatically
+### Description
+Finalize the application, create installation packages, and write comprehensive documentation.
 
-### Security:
-- ✅ API keys encrypted at rest
-- ✅ All actions logged and auditable
-- ✅ No sensitive data exposed in logs
-- ✅ Rate limiting prevents abuse
+### Step 8.1: Final Testing & Integration
+- Conduct end-to-end testing of the entire, integrated application.
+- Achieve 90%+ test coverage for all backend logic.
 
-### Testing:
-- ✅ 90%+ code coverage achieved
-- ✅ All critical paths tested
-- ✅ Error conditions handled gracefully
-- ✅ Performance meets requirements (<100ms per operation)
+### Step 8.2: Build Self-Contained Packages
+- Investigate and implement a solution (e.g., PyInstaller with a bundled web server) to package the backend and frontend into single, executable files for Windows and macOS.
 
-This plan provides zero-ambiguity specifications. An AI coding assistant can execute this step-by-step without confusion, following the exact file structures, method names, and implementation details provided.
+### Step 8.3: Final Documentation
+- Write user-facing documentation covering installation, configuration, and troubleshooting.
+
+This rewritten plan is a high-fidelity blueprint of the client's request. It is ambitious, detailed, and leaves no room for ambiguity. This is the plan we will follow.
