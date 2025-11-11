@@ -181,7 +181,43 @@ Follow this checklist to diagnose common issues.
     *   Use `unittest.mock.patch` to replace dependencies (like services or external clients) within the scope of a test.
     *   **Crucially for async code:** Use `unittest.mock.AsyncMock`.
     *   **Mocking `await` calls:** To mock `await some_async_function()`, ensure the mock is an `AsyncMock` and set its `return_value` directly to the final, resolved value you expect. The `AsyncMock` wrapper makes the method call itself awaitable. For example: `mock_redis.get.return_value = 'some_value'`. A `TypeError` during an `await` call often means the mock is incorrectly returning another mock object instead of a final value.
-    *   **Mocking `async with` Context Managers:** This is complex and a common point of failure. The most reliable method is to create a simple, local class that correctly implements `async def __aenter__(self)` and `async def __aexit__(self, ...)` and returns the desired mock object from `__aenter__`. Then, patch the function that returns the context manager to return an instance of this simple, real class. This avoids the pitfalls of trying to configure `__aenter__` on a pure `AsyncMock`.
+    *   **Mocking `async with` Context Managers:** This is a complex but critical pattern that has been a major blocker. The `AttributeError: __aenter__` is the primary symptom of getting this wrong. The core issue arises when testing a service that calls an `async def` function which, in turn, returns an async context manager object (e.g., `async with await get_exchange(...) as manager:`).
+        *   **The Problem:** Simply patching the `async def` function with `new_callable=AsyncMock` is not enough. The `async with` statement `await`s the patched function, receives the mock's `return_value`, and then tries to call `__aenter__` on that `return_value`. If the `return_value` is not a properly configured async context manager, the test fails.
+        *   **The Solution:** The most robust and reliable solution is to create a dedicated helper class that impersonates the async context manager. This class is then used as the `return_value` of the patched `async def` function.
+
+            ```python
+            # In your test file (e.g., conftest.py or the test file itself)
+            from unittest.mock import AsyncMock
+
+            class MockAsyncContextManager:
+                """
+                A helper class to robustly mock an async context manager.
+                """
+                def __init__(self, mock_instance_to_return):
+                    # This is the mock that will be assigned to the 'as' variable
+                    self.mock_instance = mock_instance_to_return
+                async def __aenter__(self):
+                    return self.mock_instance
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    pass
+
+            # --- Example Usage in a test ---
+            # @pytest.mark.asyncio
+            # async def test_my_function(mock_exchange_manager):
+            #     # 1. Create the mock context manager, telling it what to return
+            #     mock_context = MockAsyncContextManager(mock_exchange_manager)
+            #
+            #     # 2. Patch the 'async def' function that returns the context manager
+            #     with patch('path.to.get_exchange', new_callable=AsyncMock) as mock_get_exchange:
+            #         # 3. Set its return_value to be our helper instance
+            #         mock_get_exchange.return_value = mock_context
+            #
+            #         # 4. Now, when the application code runs, it will work as expected
+            #         await function_that_uses_get_exchange()
+            #
+            #         # 5. Assert that the original function was awaited
+            #         mock_get_exchange.assert_awaited_once()
+            ```
 *   **Debugging Failing Tests:** When a test fails, especially with mocks:
     *   Read the full traceback. Errors like `TypeError: object X can't be used in 'await' expression` are a strong clue that a mock is returning another mock instead of a value.
     *   Don't hesitate to temporarily add `print(type(my_variable))` to the *application code* being tested to see exactly what the mock is providing at runtime. This was critical in solving our `precision_service` test failures.

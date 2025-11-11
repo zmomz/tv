@@ -38,7 +38,7 @@ class PrecisionService:
         # TODO: Pass actual user_id dynamically. For now, using a dummy UUID for testing.
         dummy_user_id = UUID('00000000-0000-0000-0000-000000000001')
         try:
-            async with get_exchange(db, exchange, dummy_user_id) as exchange_manager_instance:
+            async with await get_exchange(db, exchange, dummy_user_id) as exchange_manager_instance:
                 precision_rules = await exchange_manager_instance.get_precision_rules(symbol)
             cache_key = await self._get_cache_key(exchange, symbol)
             await self.redis.set(cache_key, json.dumps(precision_rules), ex=self.cache_expiry_seconds)

@@ -1,6 +1,7 @@
+from typing import List
 from sqlalchemy.orm import Session
 from ..models.trading_models import PositionGroup, DCAOrder
-from ..services import exchange_manager, grid_calculator, precision_service
+from ..services import exchange_manager, grid_calculator, validation_service
 from uuid import UUID
 from decimal import Decimal
 
@@ -19,38 +20,36 @@ async def place_dca_orders(db: Session, position_group: PositionGroup) -> List[D
     )
     
     orders = []
-    for i, level in enumerate(dca_levels):
-        quantity, price = await precision_service.validate_and_adjust_order(
-            db,
-            position_group.exchange,
-            position_group.symbol,
-            "buy",
-            dca_sizes[i] / level["price"],
-            level["price"],
-        )
-        
-        order = await exchange_manager.place_order(
-            db,
-            position_group.exchange,
-            position_group.user_id,
-            position_group.symbol,
-            "buy",
-            "limit",
-            quantity,
-            price,
-        )
-        
-        db_order = DCAOrder(
-            position_group_id=position_group.id,
-            pyramid_level=0,
-            dca_level=i,
-            expected_price=price,
-            quantity=quantity,
-            status="pending",
-            exchange_order_id=order["id"],
-        )
-        db.add(db_order)
-        orders.append(db_order)
+    async with exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
+        for i, level in enumerate(dca_levels):
+            quantity, price = await validation_service.validate_and_adjust_order(
+                db,
+                position_group.exchange,
+                position_group.symbol,
+                "buy",
+                dca_sizes[i] / level["price"],
+                level["price"],
+            )
+            
+            order = await manager.place_order(
+                symbol=position_group.symbol,
+                side="buy",
+                order_type="limit",
+                amount=quantity,
+                price=price,
+            )
+            
+            db_order = DCAOrder(
+                position_group_id=position_group.id,
+                pyramid_level=0,
+                dca_level=i,
+                expected_price=price,
+                quantity=quantity,
+                status="pending",
+                exchange_order_id=order["id"],
+            )
+            db.add(db_order)
+            orders.append(db_order)
         
     db.commit()
     return orders
@@ -74,7 +73,7 @@ def handle_filled_order(db: Session, dca_order: DCAOrder, fill_data: dict) -> No
     dca_order.filled_quantity = Decimal(fill_data["filled"])
     db.commit()
 
-def cancel_pending_orders(db: Session, position_group_id: UUID) -> None:
+async def cancel_pending_orders(db: Session, position_group_id: UUID) -> None:
     """
     Cancel all pending orders for a position group.
     """
@@ -83,14 +82,15 @@ def cancel_pending_orders(db: Session, position_group_id: UUID) -> None:
         DCAOrder.status == "pending",
     ).all()
     
-    for order in orders:
-        exchange_manager.cancel_order(
-            db,
-            order.position_group.exchange,
-            order.position_group.user_id,
-            order.position_group.symbol,
-            order.exchange_order_id,
-        )
-        order.status = "cancelled"
-        
-    db.commit()
+    if orders:
+        # Assuming all orders in a position group are for the same exchange and user
+        position_group = orders[0].position_group
+        async with exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
+            for order in orders:
+                await manager.cancel_order(
+                    symbol=order.position_group.symbol,
+                    order_id=order.exchange_order_id,
+                )
+                order.status = "cancelled"
+            
+        db.commit()

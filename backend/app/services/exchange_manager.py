@@ -44,11 +44,14 @@ class ExchangeManager:
         """Places a market order."""
         return await self.exchange.create_market_order(symbol, side, amount)
 
-    async def place_order(self, symbol: str, side: str, amount: Decimal, order_type: str = 'market'):
+    async def place_order(self, symbol: str, side: str, amount: Decimal, order_type: str = 'market', price: Decimal = None):
         """Places an order on the exchange."""
-        if order_type == 'market':
+        if order_type == 'limit':
+            if price is None:
+                raise ValueError("Price must be specified for limit orders.")
+            return await self.exchange.create_limit_order(symbol, side, amount, float(price))
+        elif order_type == 'market':
             return await self.create_market_order(symbol, side, amount)
-        # TODO: Add support for other order types (e.g., limit)
         else:
             raise NotImplementedError(f"Order type '{order_type}' is not supported.")
 
@@ -65,6 +68,10 @@ class ExchangeManager:
             'min_amount': market['limits']['amount']['min'],
             'min_notional': market['limits']['cost']['min'] if 'cost' in market['limits'] else None
         }
+
+    async def cancel_order(self, symbol: str, order_id: str):
+        """Cancels an order on the exchange."""
+        return await self.exchange.cancel_order(order_id, symbol)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.exchange:
