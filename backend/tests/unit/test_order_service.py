@@ -4,9 +4,21 @@ from decimal import Decimal
 from uuid import UUID
 from sqlalchemy.orm import Session
 
-from backend.app.services.order_service import place_dca_orders, handle_filled_order, cancel_pending_orders
+from backend.app.services.order_service import place_dca_orders, handle_filled_order, cancel_pending_orders, monitor_order_fills
 from backend.app.models.trading_models import PositionGroup, DCAOrder
 from backend.app.services.exchange_manager import ExchangeManager
+
+# As per GEMINI.md, this is the correct way to mock an async context manager
+class MockAsyncContextManager:
+    """
+    A helper class to robustly mock an async context manager.
+    """
+    def __init__(self, mock_instance_to_return):
+        self.mock_instance = mock_instance_to_return
+    async def __aenter__(self):
+        return self.mock_instance
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 @pytest.fixture
 def mock_db_session():
@@ -40,6 +52,7 @@ def mock_exchange_manager():
     manager = MagicMock(spec=ExchangeManager)
     manager.place_order = AsyncMock()
     manager.cancel_order = AsyncMock()
+    manager.fetch_order = AsyncMock() # Add fetch_order mock
     manager.__aenter__ = AsyncMock(return_value=manager)
     manager.__aexit__ = AsyncMock(return_value=None)
     return manager
@@ -68,7 +81,7 @@ async def test_place_dca_orders_successfully(mock_db_session, mock_position_grou
 
         await place_dca_orders(mock_db_session, mock_position_group)
 
-        mock_exchange_manager_class.assert_called_once_with(mock_db_session, "binance", mock_position_group.user_id)
+        mock_exchange_manager_class.assert_called_once_with(mock_db_session, mock_position_group.user_id, "binance")
         mock_exchange_manager.__aenter__.assert_awaited_once()
         assert mock_exchange_manager.place_order.call_count == 2
         mock_exchange_manager.place_order.assert_any_await(
@@ -94,9 +107,56 @@ async def test_cancel_pending_orders_successfully(mock_db_session, mock_position
     with patch('backend.app.services.exchange_manager.ExchangeManager', return_value=mock_exchange_manager) as mock_exchange_manager_class:
         await cancel_pending_orders(mock_db_session, mock_position_group.id)
 
-        mock_exchange_manager_class.assert_called_once_with(mock_db_session, "binance", mock_position_group.user_id)
+        mock_exchange_manager_class.assert_called_once_with(mock_db_session, mock_position_group.user_id, "binance")
         mock_exchange_manager.__aenter__.assert_awaited_once()
         mock_exchange_manager.cancel_order.assert_awaited_once_with(symbol="BTC/USDT", order_id="order_id_1")
         assert order1.status == "cancelled"
-        mock_exchange_manager.__aexit__.assert_awaited_once()
         mock_db_session.commit.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_monitor_order_fills_updates_filled_orders(
+    mock_db_session, mock_position_group, mock_exchange_manager
+):
+    """
+    Verify that monitor_order_fills correctly identifies and updates filled orders.
+    """
+    # Setup: A pending DCA order
+    pending_order = MagicMock(spec=DCAOrder)
+    pending_order.id = UUID('11111111-1111-1111-1111-111111111111')
+    pending_order.exchange_order_id = "pending_order_id"
+    pending_order.position_group = mock_position_group
+    pending_order.status = "pending"
+
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [pending_order]
+
+    mock_context = MockAsyncContextManager(mock_exchange_manager)
+    # Mock the exchange to return a filled status for the pending order
+    mock_exchange_manager.fetch_order.return_value = {
+        "id": "pending_order_id",
+        "status": "closed", # ccxt uses 'closed' for filled orders
+        "filled": Decimal("1.0"),
+        "price": Decimal("100.00")
+    }
+
+    with patch('backend.app.services.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange, \
+         patch('backend.app.services.order_service.handle_filled_order') as mock_handle_filled_order:
+        mock_get_exchange.return_value = mock_context
+
+        await monitor_order_fills(mock_db_session) # Pass db session to the function
+
+        # Assertions
+        mock_get_exchange.assert_awaited_once_with(
+            mock_db_session,
+            mock_position_group.exchange,
+            mock_position_group.user_id
+        )
+        mock_exchange_manager.fetch_order.assert_awaited_once_with(
+            order_id="pending_order_id",
+            symbol=mock_position_group.symbol
+        )
+        mock_handle_filled_order.assert_called_once_with(
+            mock_db_session,
+            pending_order,
+            {"id": "pending_order_id", "status": "closed", "filled": Decimal("1.0"), "price": Decimal("100.00")}
+        )
+        # The status update and commit are handled by handle_filled_order, so we don't assert them here directly

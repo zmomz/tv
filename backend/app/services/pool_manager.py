@@ -4,12 +4,13 @@ from ..models import trading_models as models
 from ..core.config import settings
 from fastapi import Depends
 from ..db.session import get_db
+from uuid import UUID
 
 class ExecutionPoolManager:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_open_slots(self, user_id: int) -> int:
+    def get_open_slots(self, user_id: UUID) -> int:
         """Count available slots"""
         max_open_groups = settings.POOL_MAX_OPEN_GROUPS
         open_groups_count = self.db.query(models.PositionGroup).filter(
@@ -18,7 +19,7 @@ class ExecutionPoolManager:
         ).count()
         return max_open_groups - open_groups_count
 
-    def can_open_position(self, user_id: int) -> bool:
+    def can_open_position(self, user_id: UUID) -> bool:
         """Check if new group allowed"""
         return self.get_open_slots(user_id) > 0
 

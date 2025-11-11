@@ -20,7 +20,7 @@ async def place_dca_orders(db: Session, position_group: PositionGroup) -> List[D
     )
     
     orders = []
-    async with exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
+    async with await exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
         for i, level in enumerate(dca_levels):
             quantity, price = await validation_service.validate_and_adjust_order(
                 db,
@@ -54,15 +54,35 @@ async def place_dca_orders(db: Session, position_group: PositionGroup) -> List[D
     db.commit()
     return orders
 
-async def monitor_order_fills() -> None:
+async def monitor_order_fills(db: Session) -> None:
     """
     Monitor for filled orders and update the database.
     """
-    # This is a placeholder. In a real-world application, you would
-    # query the database for all pending orders, and then check their
-    # status on the exchange. If an order is filled, you would update
-    # its status in the database.
-    pass
+    pending_orders = db.query(DCAOrder).filter(
+        DCAOrder.status == "pending"
+    ).all()
+
+    # Group orders by user and exchange to minimize API calls
+    exchange_groups = {}
+    for order in pending_orders:
+        key = (order.position_group.user_id, order.position_group.exchange)
+        if key not in exchange_groups:
+            exchange_groups[key] = []
+        exchange_groups[key].append(order)
+
+    for (user_id, exchange_name), orders_in_group in exchange_groups.items():
+        async with await exchange_manager.get_exchange(db, exchange_name, user_id) as manager:
+            for order in orders_in_group:
+                try:
+                    exchange_order = await manager.fetch_order(
+                        order_id=order.exchange_order_id,
+                        symbol=order.position_group.symbol
+                    )
+                    if exchange_order and exchange_order["status"] == "closed": # 'closed' typically means filled in ccxt
+                        handle_filled_order(db, order, exchange_order)
+                except Exception as e:
+                    # Log the error, but don't stop monitoring other orders
+                    print(f"Error fetching order {order.exchange_order_id}: {e}")
 
 def handle_filled_order(db: Session, dca_order: DCAOrder, fill_data: dict) -> None:
     """
@@ -85,7 +105,7 @@ async def cancel_pending_orders(db: Session, position_group_id: UUID) -> None:
     if orders:
         # Assuming all orders in a position group are for the same exchange and user
         position_group = orders[0].position_group
-        async with exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
+        async with await exchange_manager.get_exchange(db, position_group.exchange, position_group.user_id) as manager:
             for order in orders:
                 await manager.cancel_order(
                     symbol=order.position_group.symbol,
