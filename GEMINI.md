@@ -171,57 +171,111 @@ Follow this checklist to diagnose common issues.
 *   **Component Composition:** Prefer using and composing the built-in MUI components (`<Button>`, `<TextField>`, `<Card>`, etc.) over creating custom-styled elements from scratch.
 *   **Styling:** For minor, one-off style adjustments, use the `sx` prop. For creating reusable, styled components, use the `styled()` utility.
 
-### Pytest
+### Testing Guidelines (`pytest`)
 
-*   **Fixtures for Setup & Mocks:** Use `@pytest.fixture` for all test setup, including creating mock objects. This keeps tests clean, readable, and focused on the logic being tested.
-*   **`pytest-asyncio` for Async Tests:**
-    *   All asynchronous tests must be decorated with `@pytest.mark.asyncio`.
-    *   Configure `pytest.ini` with `[pytest]\nasyncio_mode = auto` to ensure the asyncio event loop is managed correctly by the test runner.
-*   **Mocking with `unittest.mock`:**
-    *   Use `unittest.mock.patch` to replace dependencies (like services or external clients) within the scope of a test.
-    *   **Crucially for async code:** Use `unittest.mock.AsyncMock`.
-    *   **Mocking `await` calls:** To mock `await some_async_function()`, ensure the mock is an `AsyncMock` and set its `return_value` directly to the final, resolved value you expect. The `AsyncMock` wrapper makes the method call itself awaitable. For example: `mock_redis.get.return_value = 'some_value'`. A `TypeError` during an `await` call often means the mock is incorrectly returning another mock object instead of a final value.
-    *   **Mocking `async with` Context Managers:** This is a complex but critical pattern that has been a major blocker. The `AttributeError: __aenter__` is the primary symptom of getting this wrong. The core issue arises when testing a service that calls an `async def` function which, in turn, returns an async context manager object (e.g., `async with await get_exchange(...) as manager:`).
-        *   **The Problem:** Simply patching the `async def` function with `new_callable=AsyncMock` is not enough. The `async with` statement `await`s the patched function, receives the mock's `return_value`, and then tries to call `__aenter__` on that `return_value`. If the `return_value` is not a properly configured async context manager, the test fails.
-        *   **The Solution:** The most robust and reliable solution is to create a dedicated helper class that impersonates the async context manager. This class is then used as the `return_value` of the patched `async def` function.
+Testing is a critical part of our development process. All new business logic must be accompanied by comprehensive unit tests.
 
-            ```python
-            # In your test file (e.g., conftest.py or the test file itself)
-            from unittest.mock import AsyncMock
+#### Core Principles
+*   **Test-Driven Development (TDD):** Write a failing test *before* writing the implementation code.
+*   **Isolation:** Unit tests must be isolated. They should not depend on external services like a running database or exchange. Use mocks to simulate these dependencies.
+*   **Fixtures for Setup:** Use `@pytest.fixture` for all test setup (e.g., creating mock objects, test data). This keeps tests clean, readable, and focused on the logic being tested.
 
-            class MockAsyncContextManager:
-                """
-                A helper class to robustly mock an async context manager.
-                """
-                def __init__(self, mock_instance_to_return):
-                    # This is the mock that will be assigned to the 'as' variable
-                    self.mock_instance = mock_instance_to_return
-                async def __aenter__(self):
-                    return self.mock_instance
-                async def __aexit__(self, exc_type, exc_val, exc_tb):
-                    pass
+#### Asynchronous Code (`pytest-asyncio`)
+*   All asynchronous test functions must be decorated with `@pytest.mark.asyncio`.
+*   Ensure `pytest.ini` is configured with `asyncio_mode = auto`.
 
-            # --- Example Usage in a test ---
-            # @pytest.mark.asyncio
-            # async def test_my_function(mock_exchange_manager):
-            #     # 1. Create the mock context manager, telling it what to return
-            #     mock_context = MockAsyncContextManager(mock_exchange_manager)
-            #
-            #     # 2. Patch the 'async def' function that returns the context manager
-            #     with patch('path.to.get_exchange', new_callable=AsyncMock) as mock_get_exchange:
-            #         # 3. Set its return_value to be our helper instance
-            #         mock_get_exchange.return_value = mock_context
-            #
-            #         # 4. Now, when the application code runs, it will work as expected
-            #         await function_that_uses_get_exchange()
-            #
-            #         # 5. Assert that the original function was awaited
-            #         mock_get_exchange.assert_awaited_once()
-            ```
-*   **Debugging Failing Tests:** When a test fails, especially with mocks:
-    *   Read the full traceback. Errors like `TypeError: object X can't be used in 'await' expression` are a strong clue that a mock is returning another mock instead of a value.
-    *   Don't hesitate to temporarily add `print(type(my_variable))` to the *application code* being tested to see exactly what the mock is providing at runtime. This was critical in solving our `precision_service` test failures.
-*   **Assertions:** Use simple, clear `assert` statements. Pytest's rich assertion introspection provides detailed failure messages without needing special `assertEqual` methods.
+#### Mocking (`unittest.mock`)
+
+Mocking is essential for isolating units of code. The following are critical patterns for this specific project.
+
+**1. Mocking `await` calls:**
+*   **Problem:** A `TypeError` occurs during an `await` call, often because the mock is returning another mock object instead of a final, awaitable value.
+*   **Solution:** Use `unittest.mock.AsyncMock`. Set its `return_value` directly to the final, resolved value you expect the `await` to produce.
+    ```python
+    # Example: Mocking a service that fetches a value
+    mock_service = AsyncMock()
+    mock_service.get_value.return_value = 42
+
+    # In the test:
+    # This works because AsyncMock makes the call awaitable
+    value = await mock_service.get_value()
+    assert value == 42
+    ```
+
+**2. Mocking `async with` Context Managers:**
+*   **Problem:** An `AttributeError: __aenter__` is raised. This is the most common and critical mocking challenge in this codebase, especially when testing services that use `get_exchange`.
+*   **Solution:** The function that *returns* the async context manager (e.g., `get_exchange`) must be patched. Its `return_value` must be set to a helper object that correctly implements the `async def __aenter__` and `async def __aexit__` methods.
+
+    ```python
+    # In conftest.py or your test file, create this reusable helper:
+    from unittest.mock import AsyncMock
+
+    class MockAsyncContextManager:
+        """A helper to robustly mock an async context manager."""
+        def __init__(self, mock_instance_to_return):
+            # This is the mock that will be assigned to the 'as' variable
+            self.mock_instance = mock_instance_to_return
+        async def __aenter__(self):
+            return self.mock_instance
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    # --- Example Usage in a test ---
+    @pytest.mark.asyncio
+    async def test_my_function_using_exchange(mock_exchange_manager):
+        # 1. Create the mock context, telling it what the 'as' variable should be
+        mock_context = MockAsyncContextManager(mock_exchange_manager)
+
+        # 2. Patch the function that RETURNS the context manager
+        with patch('path.to.get_exchange', return_value=mock_context) as mock_get_exchange:
+            # 3. Now, the application code will work as expected
+            await function_that_uses_get_exchange()
+
+            # 4. Assert that the function was awaited to get the context
+            mock_get_exchange.assert_awaited_once()
+    ```
+
+**3. Mocking Chained SQLAlchemy Queries:**
+*   **Problem:** An `AssertionError` occurs when trying to assert calls on a mocked SQLAlchemy query chain (e.g., `db.query(...).filter(...).all()`). Often, the filter arguments are complex `BinaryExpression` objects that are difficult to match directly.
+*   **Solution:**
+    *   For asserting the filter call itself, use `unittest.mock.ANY`. This verifies that `filter` was called without being brittle about the exact SQLAlchemy expression.
+    *   To return data, mock the final method in the chain (e.g., `.all()`, `.first()`, `.one_or_none()`) to return the desired test data (e.g., a list of mock model instances).
+
+    ```python
+    # In your test:
+    mock_entry = MagicMock(spec=QueueEntry)
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [mock_entry]
+
+    # In your application code:
+    results = db.query(QueueEntry).filter(QueueEntry.user_id == user_id).all()
+
+    # In your test assertions:
+    mock_db_session.query.assert_called_once_with(QueueEntry)
+    mock_db_session.query.return_value.filter.assert_called_once_with(ANY)
+    assert results == [mock_entry]
+    ```
+
+**4. Mocking Configuration (`settings`):**
+*   **Problem:** An `AttributeError` is raised when trying to patch a configuration object that doesn't exist (e.g., `settings.RISK_ENGINE_CONFIG`), or a `SyntaxError` occurs with multi-line `with patch.object(...)` statements.
+*   **Solution:**
+    *   Patch individual attributes on the `settings` object directly (e.g., `settings.RISK_LOSS_THRESHOLD_PERCENT`).
+    *   For multi-line `with` statements, enclose the entire `patch.object` block in parentheses `()` to ensure correct parsing and avoid syntax errors.
+
+    ```python
+    # In your test:
+    with (
+        patch.object(settings, 'RISK_LOSS_THRESHOLD_PERCENT', Decimal("-10.0")),
+        patch.object(settings, 'RISK_REQUIRE_FULL_PYRAMIDS', False),
+        patch.object(settings, 'RISK_POST_FULL_WAIT_MINUTES', 30),
+    ):
+        # Your test logic here...
+        result = my_function_that_uses_settings()
+        assert result is True
+    ```
+
+#### Debugging Failing Tests
+*   Read the full traceback carefully. Errors like `TypeError: object X can't be used in 'await' expression` or `AttributeError: __aenter__` are strong clues that a mock is configured incorrectly.
+*   Use `print(type(my_variable))` or `print(my_mock.mock_calls)` inside the *application code* being tested to see exactly what the mock is providing at runtime. This is invaluable for debugging.
 
 ### AI Assistant Protocol
 

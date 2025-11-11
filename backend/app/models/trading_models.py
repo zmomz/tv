@@ -15,6 +15,8 @@ class PositionGroup(Base):
     symbol = Column(String(20), nullable=False)
     timeframe = Column(String(10), nullable=False)
     status = Column(Enum('waiting', 'live', 'partially_filled', 'closing', 'closed', 'failed', name='position_group_status'), nullable=False)
+    unrealized_pnl_percent = Column(DECIMAL(10, 4), nullable=True)
+    unrealized_pnl_usd = Column(DECIMAL(20, 8), nullable=True)
     entry_signal = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

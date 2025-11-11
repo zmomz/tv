@@ -1,8 +1,11 @@
 from sqlalchemy.orm import Session
-from ..models.trading_models import PositionGroup
+from ..models.trading_models import PositionGroup, Pyramid
 from uuid import UUID
 from fastapi import Depends
 from ..db.session import get_db
+from decimal import Decimal
+from datetime import datetime
+from ..core.config import settings
 
 class RiskEngine:
     def __init__(self, db: Session):
@@ -17,33 +20,84 @@ class RiskEngine:
         # evaluate the risk conditions for each one.
         pass
 
-    def should_activate_risk_engine(self, position_group: PositionGroup) -> bool:
+    def should_activate_risk_engine(self, position_group: PositionGroup, unrealized_pnl_percent: Decimal) -> bool:
         """
-        Determine whether the risk engine should be activated for a
-        position_group.
+        Determine whether the risk engine should be activated for a position_group.
+        Activation conditions from SoW 4.2:
+        - All 5 pyramids received.
+        - Post-full waiting time has passed.
+        - Loss percent is below the threshold.
+        - It must also respect the `timer_start_condition` from the config.
         """
-        # This is a placeholder. In a real-world application, you would
-        # implement the logic to determine whether the risk engine should
-        # be activated.
-        return False
+        # 1. Check if all 5 pyramids are received (if required by config)
+        if settings.RISK_REQUIRE_FULL_PYRAMIDS:
+            pyramid_count = self.db.query(Pyramid).filter(Pyramid.position_group_id == position_group.id).count()
+            if pyramid_count < 5:
+                return False
 
-    def find_losing_positions(self, user_id: UUID) -> list[PositionGroup]:
-        """
-        Find all losing positions for a user.
-        """
-        # This is a placeholder. In a real-world application, you would
-        # query the database for all live position groups for the user,
-        # and then calculate the unrealized PnL for each one.
-        return []
+        # 2. Check if loss percent is below the threshold
+        if unrealized_pnl_percent > settings.RISK_LOSS_THRESHOLD_PERCENT:
+            return False
 
-    def find_winning_positions(self, user_id: UUID) -> list[PositionGroup]:
+        # 3. Check post-full waiting time (implicitly assuming 'pyramid_full' as timer_start_condition)
+        if settings.RISK_POST_FULL_WAIT_MINUTES > 0:
+            # Find the creation time of the last pyramid entry
+            last_pyramid = self.db.query(Pyramid).filter(
+                Pyramid.position_group_id == position_group.id
+            ).order_by(Pyramid.created_at.desc()).first()
+
+            if last_pyramid:
+                wait_time_seconds = settings.RISK_POST_FULL_WAIT_MINUTES * 60
+                time_since_last_pyramid = (datetime.utcnow() - last_pyramid.created_at).total_seconds()
+                if time_since_last_pyramid < wait_time_seconds:
+                    return False
+            else:
+                # If RISK_REQUIRE_FULL_PYRAMIDS is False and no pyramids exist, this condition might be skipped
+                # For now, if no pyramids and wait time is required, return False.
+                # This logic might need refinement based on exact SoW interpretation for edge cases.
+                return False
+
+        return True
+
+    async def find_losing_positions(self, user_id: UUID) -> list[PositionGroup]:
         """
-        Find all winning positions for a user.
+        Find all losing positions for a user, ranked by priority for risk mitigation.
+        Ranking rules: 1) highest loss percent, 2) highest unrealized dollar loss, 3) oldest trade.
         """
-        # This is a placeholder. In a real-world application, you would
-        # query the database for all live position groups for the user,
-        # and then calculate the unrealized PnL for each one.
-        return []
+        # Query for live losing positions
+        losing_positions = self.db.query(PositionGroup).filter(
+            PositionGroup.user_id == user_id,
+            PositionGroup.status == "live",
+            PositionGroup.unrealized_pnl_percent < 0  # Only consider losing positions
+        ).all()
+
+        # Sort by priority rules: highest loss percent (most negative), highest unrealized dollar loss (most negative), oldest trade
+        # Python's sort is stable, so we can sort by multiple keys in reverse order of importance
+        # For loss percent and USD loss, we want the *most negative* first, so we sort ascending on the absolute value, or descending on the negative value.
+        # For created_at, oldest first is ascending.
+        sorted_losing_positions = sorted(losing_positions,
+                                         key=lambda pg: (pg.unrealized_pnl_percent, pg.unrealized_pnl_usd, pg.created_at),
+                                         reverse=False) # Sort ascending for percent and USD loss (most negative first), then ascending for created_at
+
+        return sorted_losing_positions
+
+    async def find_winning_positions(self, user_id: UUID) -> list[PositionGroup]:
+        """
+        Find all winning positions for a user, ranked by highest profit in USD.
+        """
+        # Query for live winning positions
+        winning_positions = self.db.query(PositionGroup).filter(
+            PositionGroup.user_id == user_id,
+            PositionGroup.status == "live",
+            PositionGroup.unrealized_pnl_percent > 0  # Only consider winning positions
+        ).all()
+
+        # Sort by highest unrealized dollar profit (descending)
+        sorted_winning_positions = sorted(winning_positions,
+                                          key=lambda pg: pg.unrealized_pnl_usd,
+                                          reverse=True)
+
+        return sorted_winning_positions
 
     def execute_risk_mitigation(
         self, losing_position: PositionGroup, winning_positions: list[PositionGroup]

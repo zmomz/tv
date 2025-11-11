@@ -69,25 +69,28 @@ Build the robust, pre-trade validation and precision adjustment service. This is
 
 ### Overall Assessment
 
-The current test suite is a mix of standalone scripts and a structured `pytest` framework. The coverage is sparse and heavily skewed towards isolated, low-level functionality. There is a significant lack of comprehensive unit tests for business logic and a near-total absence of integration and end-to-end tests. Many existing "tests" are actually scripts that require manual execution and verification, making them unsuitable for automated CI/CD.
+The project has a foundational `pytest` framework, but overall test coverage is still maturing. While unit test coverage for the core business logic implemented in Phases 1-3 is now strong, there remains a significant opportunity to improve integration and end-to-end testing. A number of legacy, non-pytest scripts still exist and should be migrated to the modern framework to ensure automated, reliable testing.
 
 ### Detailed Breakdown
 
 **1. Standalone Test Scripts (Legacy):**
 
 *   `test_config.py`, `test_exchange.py`, `test_pool_manager.py`, `test_queue_manager.py`, `test_risk_engine.py`, `test_tp_manager.py`, `test_venv.py`, `test_webhook_client.py`
-*   **Assessment:** These are not true automated tests. They are procedural scripts that print output to the console.
-    *   They require a live database and other services to be running.
-    *   They do not use a test runner like `pytest`.
-    *   They lack assertions for many of the critical logic paths.
-    *   They are not isolated and can interfere with each other.
-*   **Verdict:** **Very Low Coverage.** These scripts provide minimal value as automated tests and should be migrated to the `pytest` framework.
+*   **Assessment:** These are procedural scripts, not automated tests. They are not run as part of the CI/CD process and require manual execution and verification.
+*   **Verdict:** **Very Low Value.** These scripts should be migrated to the `pytest` framework to provide real, automated test coverage.
 
 **2. Pytest Framework (`/backend/tests`):**
 
 *   **`/backend/tests/unit`:**
-    *   `test_precision_service.py`: **Good Coverage.** This has been completed and now correctly tests caching, fetching, and exception handling.
-    *   `test_auth_service.py`, `test_exchange_manager.py`, `test_grid_calculator.py`, `test_risk_engine.py`: **Empty Files.** This is a major gap.
+    *   `test_precision_service.py`: **Good Coverage.**
+    *   `test_validation_service.py`: **Good Coverage.**
+    *   `test_grid_calculator.py`: **Good Coverage.**
+    *   `test_order_service.py`: **Good Coverage.**
+    *   `test_take_profit_service.py`: **Good Coverage.**
+    *   `test_pool_manager.py`: **Good Coverage.**
+    *   `test_queue_service.py`: **Good Coverage.**
+    *   `test_risk_engine.py`: **In Progress.**
+    *   `test_auth_service.py`, `test_exchange_manager.py`: **Empty Files.** This is a major gap.
 *   **`/backend/tests/integration`:**
     *   `test_api_endpoints.py`, `test_trading_flow.py`, `test_webhook_processing.py`: **Empty Files.** This indicates a complete lack of integration tests.
 *   **`conftest.py`:**
@@ -104,16 +107,15 @@ The current test suite is a mix of standalone scripts and a structured `pytest` 
 | | `take_profit_service.py` | **Good** |
 | **Phase 3: Execution Pool & Queue** | `pool_manager.py` | **Good** |
 | | `queue_service.py` | **Good** |
-| **Phase 4: The Risk Engine** | `risk_engine.py` | **None (in pytest)** |
+| **Phase 4: The Risk Engine** | `risk_engine.py` | **In Progress (Good)** |
 | **Phase 5 & 6: UI & APIs** | API Endpoints | **None** |
 
 ### Recommendations & Next Steps
 
-1.  **Resolve Blocker:** The immediate and highest priority is to solve the mocking issue in `test_order_service.py`. This requires a foundational understanding of the correct `pytest` pattern for an `async def` function that returns an async context manager.
-2.  **Migrate Legacy Scripts:** The logic from the standalone test scripts will be migrated into the `pytest` framework as proper unit and integration tests.
-3.  **Prioritize Unit Tests for Business Logic:** Once the blocker is resolved, continue writing unit tests for the remaining critical business logic services.
-4.  **Implement Integration Tests:** After unit tests are in place, integration tests will be written.
-5.  **Remove Redundant/Empty Files:** Legacy test scripts and empty test files will be removed as they are replaced with proper tests.
+1.  **Continue TDD for New Features:** Continue the current Test-Driven Development approach for all new business logic, starting with the `risk_engine.py`.
+2.  **Prioritize Integration Tests:** Once the core backend logic is complete (post-Phase 4), the next highest priority is to implement integration tests. This will verify that the services work correctly together and with the database.
+3.  **Migrate Legacy Scripts:** As time permits, migrate the logic from the standalone test scripts into the `pytest` framework as proper unit and integration tests.
+4.  **Remove Redundant/Empty Files:** Legacy test scripts and empty test files will be removed as they are replaced with proper tests.
 
 ---
 
