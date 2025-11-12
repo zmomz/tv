@@ -15,6 +15,16 @@ This document provides a 100% complete, detailed execution plan to build the Exe
 - **Full traceability** linking every SoW requirement to implementation
 
 **Total Estimated Duration:** 12-14 weeks
+**Timeline:**
+- **Weeks 1-2:** Backend Phase 1 (Database Architecture) & Backend Phase 2 (Webhook & Signal Processing)
+- **Weeks 3-4:** Backend Phase 3 (Exchange Abstraction Layer) & Backend Phase 4 (Order Management Service)
+- **Weeks 5-6:** Backend Phase 5 (Grid Trading Logic) & Backend Phase 6 (Execution Pool & Queue)
+- **Week 7:** Backend Phase 7 (Risk Engine)
+- **Weeks 8-9:** Frontend Phase 1 (Architecture & Foundation) & Frontend Phase 2 (UI Components & Views - Initial)
+- **Weeks 10-11:** Frontend Phase 2 (UI Components & Views - Completion) & Cross-Cutting Phase 1 (Integration Testing)
+- **Week 12:** Cross-Cutting Phase 2 (Security & Error Handling) & Cross-Cutting Phase 3 (Deployment & Packaging)
+- **Weeks 13-14:** Cross-Cutting Phase 4 (Documentation) & Final Validation/Refinement
+
 **Target Outcome:** Production-ready, packaged web application for Windows and macOS
 
 ---
@@ -212,7 +222,35 @@ class QueuedSignal(Base):
     promoted_at = Column(DateTime)
 ```
 
-### 3.5 State Machine: PositionGroup Status
+### 3.5 RiskAction Model
+
+```python
+class RiskAction(Base):
+    """
+    Records actions taken by the Risk Engine.
+    """
+    __tablename__ = "risk_actions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("position_groups.id"), nullable=False)
+    
+    action_type = Column(SQLAlchemyEnum("offset_loss", "manual_block", "manual_skip", name="risk_action_type_enum"), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    # Details for offset_loss
+    loser_group_id = Column(UUID(as_uuid=True), ForeignKey("position_groups.id"))
+    loser_pnl_usd = Column(Numeric(20, 10))
+    
+    # Details for winners (JSON array of {group_id, pnl_usd, quantity_closed})
+    winner_details = Column(JSON)
+    
+    notes = Column(String)
+    
+    group = relationship("PositionGroup", foreign_keys=[group_id], back_populates="risk_actions")
+    loser_group = relationship("PositionGroup", foreign_keys=[loser_group_id])
+```
+
+### 3.6 State Machine: PositionGroup Status
 
 ```
 State Flow:
@@ -246,7 +284,7 @@ State Flow:
 └────────┘
 ```
 
-### 3.6 State Machine: Order Status
+### 3.7 State Machine: Order Status
 
 ```
 Order Lifecycle:
@@ -273,14 +311,439 @@ Order Lifecycle:
 
 ## 4. Algorithm Specifications
 
-*The pseudocode provided in your prompt for Queue Priority, Risk Engine Selection, Take-Profit Monitoring, and DCA Grid Calculation is excellent and will be used as the direct implementation reference.*
+### 4.1 Queue Priority Calculation
+
+```python
+def calculate_queue_priority(signal: QueuedSignal, active_groups: List[PositionGroup]) -> float:
+    """
+    Four-tier priority system as per SoW Section 5.3:
+    
+    Priority 1 (Highest): Pyramid continuation of active group
+    Priority 2: Deepest current loss percentage
+    Priority 3: Highest replacement count
+    Priority 4 (Lowest): FIFO (oldest first)
+    
+    Returns a composite score where higher = higher priority.
+    """
+    
+    # Tier 1: Check if pyramid continuation
+    existing_group = find_active_group(
+        active_groups, 
+        signal.symbol, 
+        signal.timeframe
+    )
+    
+    if existing_group:
+        # Pyramid continuation - highest priority tier
+        # Score: 1,000,000 + inverse age (newer = higher)
+        time_in_queue = (datetime.utcnow() - signal.queued_at).total_seconds()
+        return 1_000_000 + (10_000 - time_in_queue)
+    
+    # Tier 2: Loss percentage (higher loss = higher priority)
+    # Score: 100,000 + (loss_percent * 1000)
+    # Example: -8% loss = 100,000 + 8,000 = 108,000
+    if signal.current_loss_percent:
+        loss_score = abs(signal.current_loss_percent) * 1000
+        return 100_000 + loss_score
+    
+    # Tier 3: Replacement count
+    # Score: 10,000 + (replacement_count * 100)
+    if signal.replacement_count > 0:
+        return 10_000 + (signal.replacement_count * 100)
+    
+    # Tier 4: FIFO (oldest = highest priority in this tier)
+    # Score: 1,000 + inverse timestamp
+    # Earlier queued signals get higher scores
+    time_in_queue = (datetime.utcnow() - signal.queued_at).total_seconds()
+    fifo_score = min(time_in_queue, 999)  # Cap at 999 seconds
+    return 1_000 + fifo_score
+
+
+def promote_from_queue(queued_signals: List[QueuedSignal], 
+                       active_groups: List[PositionGroup]) -> Optional[QueuedSignal]:
+    """
+    Select highest priority signal from queue.
+    Pyramid continuations bypass max position limit.
+    """
+    if not queued_signals:
+        return None
+    
+    # Calculate priority for all queued signals
+    prioritized = [
+        (signal, calculate_queue_priority(signal, active_groups))
+        for signal in queued_signals
+    ]
+    
+    # Sort by priority score (descending)
+    prioritized.sort(key=lambda x: x[1], reverse=True)
+    
+    # Return highest priority signal
+    selected_signal, priority_score = prioritized[0]
+    
+    logger.info(
+        f"Promoting signal {selected_signal.id} "
+        f"(priority: {priority_score}, "
+        f"replacement_count: {selected_signal.replacement_count})"
+    )
+    
+    return selected_signal
+```
+
+### 4.2 Risk Engine: Loser and Winner Selection
+
+```python
+def select_loser_and_winners(
+    position_groups: List[PositionGroup],
+    config: RiskEngineConfig
+) -> Tuple[Optional[PositionGroup], List[PositionGroup], Decimal]:
+    """
+    Risk Engine selection logic (SoW Section 4.4 & 4.5):
+    
+    Loser Selection (by % loss):
+    1. Highest loss percentage
+    2. If tied → highest unrealized loss USD
+    3. If tied → oldest trade
+    
+    Winner Selection (by $ profit):
+    - Rank all winning positions by unrealized profit USD
+    - Select up to max_winners_to_combine (default: 3)
+    
+    Offset Execution:
+    - Calculate required_usd to cover loser
+    - Close winners partially to realize that amount
+    """
+    
+    # Filter eligible losers
+    eligible_losers = []
+    for pg in position_groups:
+        # Must meet all conditions
+        if not all([
+            pg.status == "active",
+            pg.pyramid_count >= 5 if config.require_full_pyramids else True,
+            pg.risk_timer_expires and pg.risk_timer_expires <= datetime.utcnow(),
+            pg.unrealized_pnl_percent <= config.loss_threshold_percent,
+            not pg.risk_blocked,
+            not pg.risk_skip_once
+        ]):
+            continue
+        
+        # Age filter (optional)
+        if config.use_trade_age_filter:
+            age_minutes = (datetime.utcnow() - pg.created_at).total_seconds() / 60
+            if age_minutes < config.age_threshold_minutes:
+                continue
+        
+        eligible_losers.append(pg)
+    
+    if not eligible_losers:
+        return None, [], Decimal("0")
+    
+    # Sort losers by priority
+    selected_loser = max(eligible_losers, key=lambda pg: (
+        abs(pg.unrealized_pnl_percent),  # Primary: highest loss %
+        abs(pg.unrealized_pnl_usd),      # Secondary: highest loss $
+        -pg.created_at.timestamp()        # Tertiary: oldest
+    ))
+    
+    required_usd = abs(selected_loser.unrealized_pnl_usd)
+    
+    # Select winners
+    winning_positions = [
+        pg for pg in position_groups
+        if pg.status == "active" and pg.unrealized_pnl_usd > 0
+    ]
+    
+    # Sort by USD profit (descending)
+    winning_positions.sort(
+        key=lambda pg: pg.unrealized_pnl_usd,
+        reverse=True
+    )
+    
+    # Take up to max_winners_to_combine
+    selected_winners = winning_positions[:config.max_winners_to_combine]
+    
+    # Verify sufficient profit
+    total_available_profit = sum(w.unrealized_pnl_usd for w in selected_winners)
+    
+    if total_available_profit < required_usd:
+        logger.warning(
+            f"Insufficient profit to cover loss. "
+            f"Required: {required_usd}, Available: {total_available_profit}"
+        )
+        # Still return - caller decides whether to execute partial offset
+    
+    return selected_loser, selected_winners, required_usd
+
+
+def calculate_partial_close_quantities(
+    winners: List[PositionGroup],
+    required_usd: Decimal,
+    precision_rules: Dict
+) -> List[Tuple[PositionGroup, Decimal]]:
+    """
+    Calculate how much to close from each winner to realize required_usd.
+    
+    Returns: List of (PositionGroup, quantity_to_close)
+    """
+    close_plan = []
+    remaining_needed = required_usd
+    
+    for winner in winners:
+        if remaining_needed <= 0:
+            break
+        
+        # Calculate how much profit this winner can contribute
+        available_profit = winner.unrealized_pnl_usd
+        
+        # Determine how much of this winner to close
+        profit_to_take = min(available_profit, remaining_needed)
+        
+        # Calculate quantity to close to realize this profit
+        # profit_per_unit = current_price - avg_entry
+        current_price = get_current_price(winner.symbol)
+        profit_per_unit = current_price - winner.weighted_avg_entry
+        
+        quantity_to_close = profit_to_take / profit_per_unit
+        
+        # Round to step size
+        step_size = precision_rules[winner.symbol]["step_size"]
+        quantity_to_close = round_to_step_size(quantity_to_close, step_size)
+        
+        # Check minimum notional
+        notional_value = quantity_to_close * current_price
+        min_notional = precision_rules[winner.symbol]["min_notional"]
+        
+        if notional_value < min_notional:
+            logger.warning(
+                f"Partial close for {winner.symbol} below min notional "
+                f"({notional_value} < {min_notional}). Skipping."
+            )
+            continue
+        
+        close_plan.append((winner, quantity_to_close))
+        remaining_needed -= profit_to_take
+    
+    return close_plan
+```
+
+### 4.3 Take-Profit Monitoring
+
+```python
+async def check_take_profit_conditions(
+    position_group: PositionGroup,
+    current_price: Decimal
+) -> List[DCAOrder]:
+    """
+    Check TP conditions based on tp_mode.
+    Returns list of DCA orders that hit their TP target.
+    
+    Three modes (SoW Section 2.4):
+    1. per_leg: Each DCA closes independently
+    2. aggregate: Entire position closes when avg entry reaches TP
+    3. hybrid: Both logics run, whichever closes first
+    """
+    orders_to_close = []
+    
+    if position_group.tp_mode == "per_leg":
+        # Check each filled DCA leg individually
+        for order in position_group.dca_orders:
+            if order.status == "filled" and not order.tp_hit:
+                if is_tp_reached(order, current_price, position_group.side):
+                    orders_to_close.append(order)
+    
+    elif position_group.tp_mode == "aggregate":
+        # Check if weighted average entry reached aggregate TP
+        target_price = calculate_aggregate_tp_price(
+            position_group.weighted_avg_entry,
+            position_group.tp_aggregate_percent,
+            position_group.side
+        )
+        
+        if is_price_beyond_target(current_price, target_price, position_group.side):
+            # Close entire position
+            orders_to_close = [
+                order for order in position_group.dca_orders
+                if order.status == "filled" and not order.tp_hit
+            ]
+    
+    elif position_group.tp_mode == "hybrid":
+        # Check both per-leg and aggregate
+        # Whichever triggers first wins
+        
+        # Per-leg check
+        per_leg_triggered = []
+        for order in position_group.dca_orders:
+            if order.status == "filled" and not order.tp_hit:
+                if is_tp_reached(order, current_price, position_group.side):
+                    per_leg_triggered.append(order)
+        
+        # Aggregate check
+        aggregate_target = calculate_aggregate_tp_price(
+            position_group.weighted_avg_entry,
+            position_group.tp_aggregate_percent,
+            position_group.side
+        )
+        aggregate_triggered = is_price_beyond_target(
+            current_price, aggregate_target, position_group.side
+        )
+        
+        if per_leg_triggered:
+            # Per-leg TP hit - close those legs only
+            orders_to_close = per_leg_triggered
+        elif aggregate_triggered:
+            # Aggregate TP hit - close entire position
+            orders_to_close = [
+                order for order in position_group.dca_orders
+                if order.status == "filled" and not order.tp_hit
+            ]
+    
+    return orders_to_close
+
+
+def is_tp_reached(order: DCAOrder, current_price: Decimal, side: str) -> bool:
+    """
+    Check if current price reached the TP target for this order.
+    TP is calculated from actual fill price, not original entry.
+    """
+    if side == "long":
+        # Long: current_price >= tp_price
+        return current_price >= order.tp_price
+    else:
+        # Short: current_price <= tp_price
+        return current_price <= order.tp_price
+
+
+def calculate_aggregate_tp_price(
+    weighted_avg_entry: Decimal,
+    tp_percent: Decimal,
+    side: str
+) -> Decimal:
+    """
+    Calculate aggregate TP price from weighted average entry.
+    """
+    if side == "long":
+        return weighted_avg_entry * (1 + tp_percent / 100)
+    else:
+        return weighted_avg_entry * (1 - tp_percent / 100)
+```
+
+### 4.4 DCA Grid Calculation
+
+```python
+def calculate_dca_levels(
+    base_price: Decimal,
+    dca_config: List[Dict],
+    side: Literal["long", "short"],
+    precision_rules: Dict
+) -> List[Dict]:
+    """
+    Calculate DCA price levels with per-layer configuration.
+    
+    dca_config format (SoW Section 2.3):
+    [
+        {"gap_percent": 0.0, "weight_percent": 20, "tp_percent": 1.0},
+        {"gap_percent": -0.5, "weight_percent": 20, "tp_percent": 0.5},
+        ...
+    ]
+    
+    Returns list of:
+    {
+        "leg_index": 0,
+        "price": Decimal("50000.00"),
+        "quantity": Decimal("0.001"),
+        "gap_percent": Decimal("0.0"),
+        "weight_percent": Decimal("20"),
+        "tp_percent": Decimal("1.0"),
+        "tp_price": Decimal("50500.00")
+    }
+    """
+    tick_size = precision_rules["tick_size"]
+    step_size = precision_rules["step_size"]
+    
+    dca_levels = []
+    
+    for idx, layer in enumerate(dca_config):
+        gap_percent = Decimal(str(layer["gap_percent"]))
+        weight_percent = Decimal(str(layer["weight_percent"]))
+        tp_percent = Decimal(str(layer["tp_percent"]))
+        
+        # Calculate DCA entry price
+        if side == "long":
+            # Long: negative gap means lower price (discount)
+            dca_price = base_price * (1 + gap_percent / 100)
+        else:
+            # Short: negative gap means higher price
+            dca_price = base_price * (1 - gap_percent / 100)
+        
+        # Round to tick size
+        dca_price = round_to_tick_size(dca_price, tick_size)
+        
+        # Calculate TP price (from DCA entry, not base price)
+        if side == "long":
+            tp_price = dca_price * (1 + tp_percent / 100)
+        else:
+            tp_price = dca_price * (1 - tp_percent / 100)
+        
+        tp_price = round_to_tick_size(tp_price, tick_size)
+        
+        dca_levels.append({
+            "leg_index": idx,
+            "price": dca_price,
+            "gap_percent": gap_percent,
+            "weight_percent": weight_percent,
+            "tp_percent": tp_percent,
+            "tp_price": tp_price
+        })
+    
+    return dca_levels
+
+
+def calculate_order_quantities(
+    dca_levels: List[Dict],
+    total_capital_usd: Decimal,
+    precision_rules: Dict
+) -> List[Dict]:
+    """
+    Calculate order quantity for each DCA level based on weight allocation.
+    """
+    step_size = precision_rules["step_size"]
+    min_qty = precision_rules["min_qty"]
+    min_notional = precision_rules["min_notional"]
+    
+    for level in dca_levels:
+        # Calculate capital for this leg
+        leg_capital = total_capital_usd * (level["weight_percent"] / 100)
+        
+        # Calculate quantity: capital / price
+        quantity = leg_capital / level["price"]
+        
+        # Round to step size
+        quantity = round_to_step_size(quantity, step_size)
+        
+        # Validate minimum quantity
+        if quantity < min_qty:
+            raise ValidationError(
+                f"Quantity {quantity} below minimum {min_qty}"
+            )
+        
+        # Validate minimum notional
+        notional = quantity * level["price"]
+        if notional < min_notional:
+            raise ValidationError(
+                f"Notional {notional} below minimum {min_notional}"
+            )
+        
+        level["quantity"] = quantity
+    
+    return dca_levels
+```
 
 ---
 
 ## 5. Backend Development Plan
 
 ### Phase 1: Database Architecture
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 1)
 **Priority:** Critical (Blocks all other phases)
 
 #### Objectives
@@ -307,7 +770,7 @@ Design and implement the complete database schema, migrations, and data access l
 2.  **Review:** [ ] All SoW entities have tables. [ ] Relationships and indexes are correct.
 
 ### Phase 2: Webhook & Signal Processing
-**Duration:** 4-5 days
+**Duration:** 4-5 days (Week 2)
 **Priority:** High
 
 #### Objectives
@@ -331,7 +794,7 @@ Build a secure and robust pipeline for ingesting, validating, and routing Tradin
 2.  **Review:** [ ] Code for signature validation is secure and constant-time. [ ] All signal types from SoW are handled by the router.
 
 ### Phase 3: Exchange Abstraction Layer
-**Duration:** 6-8 days
+**Duration:** 6-8 days (Week 3)
 **Priority:** High
 
 #### Objectives
@@ -356,7 +819,7 @@ Create a flexible and extensible exchange integration layer that can support mul
 2.  **Review:** [ ] The `ExchangeInterface` covers all required actions. [ ] Error handling correctly captures and standardizes common exchange errors.
 
 ### Phase 4: Order Management Service
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 4)
 **Priority:** High
 
 #### Objectives
@@ -381,7 +844,7 @@ Implement a robust and reliable order management system that can handle the full
 2.  **Review:** [ ] The state machine logic is robust. [ ] The startup reconciliation logic correctly handles discrepancies.
 
 ### Phase 5: Grid Trading Logic
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 5)
 **Priority:** High
 
 #### Objectives
@@ -405,7 +868,7 @@ Implement the core trading strategy, including DCA calculation, take-profit mode
 2.  **Review:** [ ] The logic for all three TP modes is correctly implemented as per the SoW. [ ] Edge cases like partial fills are handled in TP calculations.
 
 ### Phase 6: Execution Pool & Queue
-**Duration:** 4-6 days
+**Duration:** 4-6 days (Week 6)
 **Priority:** High
 
 #### Objectives
@@ -430,7 +893,7 @@ Implement the system for managing concurrent positions and prioritizing incoming
 2.  **Review:** [ ] The priority calculation algorithm exactly matches the SoW. [ ] Race conditions are handled correctly.
 
 ### Phase 7: Risk Engine
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 7)
 **Priority:** High
 
 #### Objectives
@@ -455,36 +918,13 @@ Implement the sophisticated, multi-conditional Risk Engine to offset losing trad
 1.  **Demo:** Create a scenario with one clear loser and several winners. Show the risk engine timer activate. Once expired, show the engine correctly selecting the loser and winners, calculating the partial close amounts, and logging the action.
 2.  **Review:** [ ] The loser/winner selection logic exactly matches the SoW. [ ] The partial close calculations are precise.
 
-### Phase 2: Webhook & Signal Processing
-**Duration:** 4-5 days
-**Priority:** High
-
-#### Objectives
-Build a secure and robust pipeline for ingesting, validating, and routing TradingView signals.
-
-#### Steps
-1.  **Implement Signature Validation:** Create a FastAPI dependency that checks the `X-Signature` header.
-2.  **Create Pydantic Parsers:** Define Pydantic models for all incoming webhook payloads.
-3.  **Build Signal Validator Service:** A service that checks for required fields, valid data types, and logical consistency.
-4.  **Implement Signal Router:** A service that determines if a signal is for a new group, a pyramid, or an exit, and calls the appropriate downstream service.
-5.  **Add Rate Limiting:** Use a library like `slowapi` to limit incoming requests.
-
-#### Acceptance Criteria
-- **Functional:** ✅ Only valid, signed webhooks are processed. Signals are correctly routed.
-- **Technical:** ✅ Pydantic models enforce payload structure.
-- **Test Coverage:** ✅ Tests for valid/invalid signatures, malformed payloads, and all routing logic paths.
-- **Security:** ✅ Protected against replay attacks and unauthorized access.
-
-#### Validation Checkpoint
-1.  **Demo:** Send a valid webhook and show it being processed. Send an invalid one and show it being rejected.
-2.  **Review:** [ ] Code for signature validation is secure. [ ] All signal types are handled by the router.
 
 --- 
 
 ## 6. Frontend Development Plan
 
 ### Phase 1: Architecture & Foundation
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 8)
 **Priority:** Critical (Blocks all other phases)
 
 #### Objectives
@@ -511,7 +951,7 @@ Set up a modern, scalable, and maintainable frontend architecture.
 2.  **Review:** [ ] The folder structure is logical. [ ] The state management approach is sound. [ ] The API client correctly handles auth.
 
 ### Phase 2: UI Components & Views
-**Duration:** 15-20 days
+**Duration:** 15-20 days (Weeks 9-11)
 **Priority:** High
 
 #### Objectives
@@ -541,7 +981,7 @@ Build all the UI components and pages specified in the SoW with a focus on clari
 ## 7. Cross-Cutting Phases
 
 ### Phase 1: Integration Testing
-**Duration:** 7-10 days
+**Duration:** 7-10 days (Week 11)
 **Priority:** High
 
 #### Objectives
@@ -565,7 +1005,7 @@ Build a suite of end-to-end tests to verify that the entire application works to
 2.  **Review:** [ ] The test scenarios cover the most critical and complex workflows. [ ] The mock exchange is sufficient to simulate real-world conditions.
 
 ### Phase 2: Security & Error Handling
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 12)
 **Priority:** Critical
 
 #### Objectives
@@ -588,7 +1028,7 @@ Harden the application against common vulnerabilities and ensure it handles erro
 2.  **Review:** [ ] The encryption method is strong. [ ] The RBAC logic is correctly applied to all relevant endpoints.
 
 ### Phase 3: Deployment & Packaging
-**Duration:** 5-7 days
+**Duration:** 5-7 days (Week 12)
 **Priority:** High
 
 #### Objectives
@@ -612,7 +1052,7 @@ Package the application into self-contained, distributable installers for Window
 2.  **Review:** [ ] The build scripts are reliable and documented. [ ] The update mechanism is user-friendly.
 
 ### Phase 4: Documentation
-**Duration:** 4-5 days
+**Duration:** 4-5 days (Week 13)
 **Priority:** Medium
 
 #### Objectives
@@ -631,4 +1071,36 @@ Create clear, comprehensive documentation for both end-users and developers.
 #### Validation Checkpoint
 1.  **Demo:** Showcase the User Guide, the updated `README.md`, and the live Swagger UI for the API.
 2.  **Review:** [ ] The documentation is clear, concise, and covers all major aspects of the application.
+
+---
+
+## 8. SoW Traceability Matrix
+
+| SoW Section | SoW Requirement | Execution Plan Phase |
+|-------------|-----------------|----------------------|
+| 2.1         | TradingView Webhook Ingestion | Backend Phase 2      |
+| 2.2         | First signal creates Position Group | Backend Phase 2      |
+| 2.2         | Pyramids don't create new positions | Backend Phase 6      |
+| 2.3         | DCA per-layer configuration | Backend Phase 5      |
+| 2.4         | Take-Profit Modes (Per-Leg, Aggregate, Hybrid) | Backend Phase 5      |
+| 2.5         | Exit Logic (Market Close) | Backend Phase 5      |
+| 3           | Exchange Integration (Binance, Bybit) | Backend Phase 3      |
+| 3.1         | Precision Validation | Backend Phase 3      |
+| 4           | Risk Engine (Timer, Selection, Offset) | Backend Phase 7      |
+| 5           | Execution Pool & Queue (Priority, Limits) | Backend Phase 6      |
+| 6           | Order Management (Placement, Monitoring, Fills) | Backend Phase 4      |
+| 7           | UI - Live Dashboard | Frontend Phase 2     |
+| 7           | UI - Positions & Pyramids View | Frontend Phase 2     |
+| 7           | UI - Risk Engine Panel | Frontend Phase 2     |
+| 7           | UI - Waiting Queue View | Frontend Phase 2     |
+| 7           | UI - Logs & Alerts | Frontend Phase 2     |
+| 7           | UI - Settings Panel | Frontend Phase 2     |
+| 7           | UI - Performance & Portfolio Dashboard | Frontend Phase 2     |
+| 8           | Real-time Data Synchronization | Frontend Phase 2     |
+| 9           | Authentication & Authorization | Frontend Phase 1, Cross-Cutting Phase 2 |
+| 10          | Configuration Management | Cross-Cutting Phase 3 |
+| 11          | Logging & Monitoring | Cross-Cutting Phase 1, 2 |
+| 12          | Error Handling & Recovery | Cross-Cutting Phase 2 |
+| 13          | Deployment & Packaging (Windows, macOS) | Cross-Cutting Phase 3 |
+| 14          | Documentation (User, Developer, API) | Cross-Cutting Phase 4 |
 
