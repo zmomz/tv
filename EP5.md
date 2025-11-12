@@ -1135,13 +1135,14 @@ EXCHANGE_TYPE=mock
 Design and implement the complete database schema, migrations, and data access layer.
 
 #### Steps
-1.  **Implement Models:** Translate the data models from Section 3 into SQLAlchemy code.
-2.  **Generate Initial Migration:** Run `docker compose exec app alembic revision --autogenerate -m "initial_schema"`. Manually review and refine the generated script.
-3.  **Create Repository Pattern:** Implement a `BaseRepository` and specific repositories (e.g., `PositionGroupRepository`) for all major models.
-4.  **Configure Connection Pooling:** Set up the SQLAlchemy engine with `pool_size=20`, `max_overflow=10`.
-5.  **Implement Transaction Management:** Create a dependency-injected database session that ensures `commit` on success and `rollback` on failure.
-6.  **Script Backup/Restore:** Create `scripts/backup_db.sh` and `scripts/restore_db.sh`.
-7.  **Add Health Check Endpoint:** Create a `/api/health/db` endpoint that performs a `SELECT 1` query.
+0.  **Create Tests:** Write unit tests for the repository pattern and data models. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement Models:** Translate the data models from Section 3 into SQLAlchemy code. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Generate Initial Migration:** Run `docker compose exec app alembic revision --autogenerate -m "initial_schema"`. Manually review and refine the generated script. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Create Repository Pattern:** Implement a `BaseRepository` and specific repositories (e.g., `PositionGroupRepository`) for all major models. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Configure Connection Pooling:** Set up the SQLAlchemy engine with `pool_size=20`, `max_overflow=10`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Implement Transaction Management:** Create a dependency-injected database session that ensures `commit` on success and `rollback` on failure. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Script Backup/Restore:** Create `scripts/backup_db.sh` and `scripts/restore_db.sh`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+7.  **Add Health Check Endpoint:** Create a `/api/health/db` endpoint that performs a `SELECT 1` query. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ Schema supports all SoW entities. Migrations are repeatable.
@@ -1158,6 +1159,7 @@ Design and implement the complete database schema, migrations, and data access l
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Backend Phase 2: Webhook & Signal Processing
 
@@ -1166,11 +1168,12 @@ Design and implement the complete database schema, migrations, and data access l
 Build a secure and robust pipeline for ingesting, validating, and routing TradingView signals.
 
 #### Steps
-1.  **Implement Signature Validation:** Create a FastAPI dependency that compares a hash of the request body with a secret key.
-2.  **Create Pydantic Parsers:** Define strict Pydantic models for all incoming webhook payloads to ensure type safety and validation.
-3.  **Build Signal Validator Service:** Create `SignalValidatorService` to check for logical consistency (e.g., `action` matches `strategy`).
-4.  **Implement Signal Router Service:** Create `SignalRouterService` that takes a validated signal and determines if it's a new group, a pyramid, or an exit, then calls the appropriate downstream service (`PositionManager`, `QueueManager`, etc.).
-5.  **Add Rate Limiting:** Use a library like `slowapi` to limit incoming requests per user to prevent abuse.
+0.  **Create Tests:** Write unit tests for signature validation, payload parsing, and signal routing. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement Signature Validation:** Create a FastAPI dependency that compares a hash of the request body with a secret key. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Create Pydantic Parsers:** Define strict Pydantic models for all incoming webhook payloads to ensure type safety and validation. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Build Signal Validator Service:** Create `SignalValidatorService` to check for logical consistency (e.g., `action` matches `strategy`). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement Signal Router Service:** Create `SignalRouterService` that takes a validated signal and determines if it's a new group, a pyramid, or an exit, then calls the appropriate downstream service (`PositionManager`, `QueueManager`, etc.). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Add Rate Limiting:** Use a library like `slowapi` to limit incoming requests per user to prevent abuse. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ Only valid, signed webhooks are processed. Signals are correctly routed based on SoW logic.
@@ -1186,6 +1189,7 @@ Build a secure and robust pipeline for ingesting, validating, and routing Tradin
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 3: Exchange Abstraction Layer
 
@@ -1193,13 +1197,14 @@ Build a secure and robust pipeline for ingesting, validating, and routing Tradin
 Create a flexible and extensible exchange integration layer that can support multiple exchanges (Binance, Bybit initially), with robust error handling and precision management.
 
 #### Steps
-1.  **Design `ExchangeInterface`:** Create an Abstract Base Class (ABC) defining the contract for all exchange connectors. Methods will include `get_precision_rules`, `place_order`, `get_order_status`, `cancel_order`, `get_current_price`, `fetch_balance`.
-2.  **Implement Connector Factory:** Create a factory function or class that returns the correct connector instance (e.g., `BinanceConnector`) based on the user's configuration.
-3.  **Implement `BinanceConnector`:** Implement the `ExchangeInterface` for the Binance exchange using the `ccxt` library.
-4.  **Implement `BybitConnector`:** Implement the `ExchangeInterface` for the Bybit exchange.
-5.  **Implement Precision Service:** Create a background service (`PrecisionService`) that periodically (e.g., every 60 minutes) fetches and caches precision rules for all symbols for all configured user exchanges. Implement an in-memory cache with a Time-To-Live (TTL).
-6.  **Standardize Data Models:** Create internal Pydantic models for `Order`, `Fill`, and `Precision` to standardize the data returned from all connectors, decoupling the application from `ccxt`'s specific data structures.
-7.  **Implement Error Mapping:** Create a decorator or utility to wrap all `ccxt` calls. This wrapper will catch `ccxt` exceptions and map them to the custom application exceptions defined in the **Logic Annex**.
+0.  **Create Tests:** Write unit tests for the `ExchangeInterface`, connector factory, and error mapping. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Design `ExchangeInterface`:** Create an Abstract Base Class (ABC) defining the contract for all exchange connectors. Methods will include `get_precision_rules`, `place_order`, `get_order_status`, `cancel_order`, `get_current_price`, `fetch_balance`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Implement Connector Factory:** Create a factory function or class that returns the correct connector instance (e.g., `BinanceConnector`) based on the user's configuration. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Implement `BinanceConnector`:** Implement the `ExchangeInterface` for the Binance exchange using the `ccxt` library. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement `BybitConnector`:** Implement the `ExchangeInterface` for the Bybit exchange. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Implement Precision Service:** Create a background service (`PrecisionService`) that periodically (e.g., every 60 minutes) fetches and caches precision rules for all symbols for all configured user exchanges. Implement an in-memory cache with a Time-To-Live (TTL). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Standardize Data Models:** Create internal Pydantic models for `Order`, `Fill`, and `Precision` to standardize the data returned from all connectors, decoupling the application from `ccxt`'s specific data structures. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+7.  **Implement Error Mapping:** Create a decorator or utility to wrap all `ccxt` calls. This wrapper will catch `ccxt` exceptions and map them to the custom application exceptions defined in the **Logic Annex**. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ The system can place orders, check status, and fetch precision on both Binance and Bybit testnets. ✅ Precision rules are fetched and cached automatically.
@@ -1219,6 +1224,7 @@ Create a flexible and extensible exchange integration layer that can support mul
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 4: Order Management Service
 
@@ -1226,15 +1232,16 @@ Create a flexible and extensible exchange integration layer that can support mul
 Implement a robust and reliable order management system that can handle the full lifecycle of an order, including partial fills and startup reconciliation.
 
 #### Steps
-1.  **Implement `OrderService`:** Create the service with methods for `submit_order`, `cancel_order`, and `check_order_status`. The `submit_order` method will include retry logic with exponential backoff for transient network errors.
-2.  **Create Order Fill Monitor:** Implement a persistent background task (using `asyncio.Task`) that periodically queries the status of all `open` or `partially_filled` orders from the database.
+0.  **Create Tests:** Write unit tests for order state transitions, cancellation logic, and startup reconciliation. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement `OrderService`:** Create the service with methods for `submit_order`, `cancel_order`, and `check_order_status`. The `submit_order` method will include retry logic with exponential backoff for transient network errors. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Create Order Fill Monitor:** Implement a persistent background task (using `asyncio.Task`) that periodically queries the status of all `open` or `partially_filled` orders from the database. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 3.  **Implement State Transitions:** Within the monitor, handle all possible state changes:
-    - On `filled`, update the `DCAOrder` status, `filled_quantity`, `avg_fill_price`, and `filled_at` timestamp.
-    - On `partially_filled`, update only the `filled_quantity` and `avg_fill_price`.
-    - On `canceled`, update the status and `cancelled_at` timestamp.
-4.  **Ensure Atomicity:** All database updates to an order's status and its related `PositionGroup` must occur within a single database transaction to prevent inconsistent states.
-5.  **Implement Cancellation Workflow:** The `cancel_order` method in the service will send the cancellation request to the exchange and update the order's status in the database.
-6.  **Implement Startup Reconciliation:** On application startup, the `OrderService` will fetch all open orders from the exchange for the user and reconcile their status against the orders stored in the database to handle any state drift that occurred while the application was offline.
+    - On `filled`, update the `DCAOrder` status, `filled_quantity`, `avg_fill_price`, and `filled_at` timestamp. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - On `partially_filled`, update only the `filled_quantity` and `avg_fill_price`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - On `canceled`, update the status and `cancelled_at` timestamp. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Ensure Atomicity:** All database updates to an order's status and its related `PositionGroup` must occur within a single database transaction to prevent inconsistent states. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Implement Cancellation Workflow:** The `cancel_order` method in the service will send the cancellation request to the exchange and update the order's status in the database. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Implement Startup Reconciliation:** On application startup, the `OrderService` will fetch all open orders from the exchange for the user and reconcile their status against the orders stored in the database to handle any state drift that occurred while the application was offline. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ System can reliably place, monitor, and cancel orders. ✅ Partial fills are correctly recorded and reflected in the position's average entry. ✅ System state is correctly reconciled after a restart.
@@ -1254,6 +1261,7 @@ Implement a robust and reliable order management system that can handle the full
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 5: Grid Trading Logic
 
@@ -1261,12 +1269,13 @@ Implement a robust and reliable order management system that can handle the full
 Implement the core trading strategy, including DCA calculation, all three take-profit modes, and the exit signal workflow.
 
 #### Steps
-1.  **Implement `GridCalculatorService`:** Create a pure service to implement the logic from `6.4 DCA Grid Calculation`, taking a base price and grid config, and returning a list of DCA levels with prices and quantities.
-2.  **Implement Per-Layer Config Parser:** Use Pydantic to parse and validate the DCA configuration from the user settings, ensuring all required fields (`gap_percent`, `weight_percent`, `tp_percent`) are present.
-3.  **Implement `TakeProfitService`:** Create a background service that continuously monitors the current market price for all `active` `PositionGroup`s.
-4.  **Implement TP Modes:** Inside the `TakeProfitService`, implement the logic from `6.3 Take-Profit Monitoring` for all three modes (`per_leg`, `aggregate`, `hybrid`).
-5.  **Use Actual Fill Price:** Ensure the `TakeProfitService` calculates TP targets based on the actual `avg_fill_price` of a DCA order, not its originally intended price.
-6.  **Implement Exit Logic:** The `PositionManager` service will, upon receiving an "exit" signal, call the `OrderService` to first cancel all open DCA orders for that group, and then place a market order to close the remaining filled position.
+0.  **Create Tests:** Write unit tests for the grid calculator, all three take-profit modes, and the exit logic. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement `GridCalculatorService`:** Create a pure service to implement the logic from `6.4 DCA Grid Calculation`, taking a base price and grid config, and returning a list of DCA levels with prices and quantities. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Implement Per-Layer Config Parser:** Use Pydantic to parse and validate the DCA configuration from the user settings, ensuring all required fields (`gap_percent`, `weight_percent`, `tp_percent`) are present. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Implement `TakeProfitService`:** Create a background service that continuously monitors the current market price for all `active` `PositionGroup`s. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement TP Modes:** Inside the `TakeProfitService`, implement the logic from `6.3 Take-Profit Monitoring` for all three modes (`per_leg`, `aggregate`, `hybrid`). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Use Actual Fill Price:** Ensure the `TakeProfitService` calculates TP targets based on the actual `avg_fill_price` of a DCA order, not its originally intended price. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Implement Exit Logic:** The `PositionManager` service will, upon receiving an "exit" signal, call the `OrderService` to first cancel all open DCA orders for that group, and then place a market order to close the remaining filled position. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ DCA levels are calculated correctly based on per-layer config. ✅ All three TP modes (`Per-Leg`, `Aggregate`, `Hybrid`) are implemented and functional as per the SoW. ✅ An exit signal correctly closes the entire position group.
@@ -1286,6 +1295,7 @@ Implement the core trading strategy, including DCA calculation, all three take-p
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 6: Execution Pool & Queue
 
@@ -1293,14 +1303,15 @@ Implement the core trading strategy, including DCA calculation, all three take-p
 Implement the system for managing concurrent positions and prioritizing incoming signals according to the SoW's four-tier logic.
 
 #### Steps
-1.  **Implement `ExecutionPoolManager`:** A service that manages the number of active `PositionGroup`s. Its primary method, `request_slot()`, will atomically check the count against the `max_open_groups` setting.
-2.  **Implement `QueueManagerService`:** A service that adds signals to the `QueuedSignal` table when the pool is full and retrieves signals for promotion.
-3.  **Implement Priority Calculator:** Implement the `calculate_queue_priority` function from `6.1 Algorithm Specifications`. This includes fetching the real-time price to calculate `current_loss_percent` for queued signals.
-4.  **Implement Queue Promotion Task:** Create a background task that runs when a pool slot is released. It will call the `QueueManagerService` to promote the highest-priority signal.
-5.  **Ensure Atomicity:** Use pessimistic database locking (`SELECT ... FOR UPDATE`) when checking for a free pool slot and creating a new `PositionGroup` to prevent race conditions where two signals might be promoted simultaneously.
+0.  **Create Tests:** Write unit tests for the queue priority calculator and integration tests for atomicity and signal replacement logic. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement `ExecutionPoolManager`:** A service that manages the number of active `PositionGroup`s. Its primary method, `request_slot()`, will atomically check the count against the `max_open_groups` setting. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Implement `QueueManagerService`:** A service that adds signals to the `QueuedSignal` table when the pool is full and retrieves signals for promotion. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Implement Priority Calculator:** Implement the `calculate_queue_priority` function from `6.1 Algorithm Specifications`. This includes fetching the real-time price to calculate `current_loss_percent` for queued signals. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement Queue Promotion Task:** Create a background task that runs when a pool slot is released. It will call the `QueueManagerService` to promote the highest-priority signal. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Ensure Atomicity:** Use pessimistic database locking (`SELECT ... FOR UPDATE`) when checking for a free pool slot and creating a new `PositionGroup` to prevent race conditions where two signals might be promoted simultaneously. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 6.  **Handle Signal Replacement & Deletion:**
-    - When a new signal arrives for a symbol/timeframe already in the queue, update the existing entry and increment its `replacement_count`.
-    - When an exit signal arrives for a symbol/timeframe in the queue, delete the queued entry.
+    - When a new signal arrives for a symbol/timeframe already in the queue, update the existing entry and increment its `replacement_count`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - When an exit signal arrives for a symbol/timeframe in the queue, delete the queued entry. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ The pool correctly limits active positions. ✅ Pyramid signals for existing positions correctly bypass the pool limit. ✅ The queue correctly prioritizes signals based on the four-tier system. ✅ Queued signals are correctly replaced or deleted by subsequent signals.
@@ -1323,6 +1334,7 @@ Implement the system for managing concurrent positions and prioritizing incoming
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 7: Risk Engine
 
@@ -1330,15 +1342,16 @@ Implement the system for managing concurrent positions and prioritizing incoming
 Implement the sophisticated, multi-conditional Risk Engine to offset losing trades according to the strict rules defined in the SoW.
 
 #### Steps
-1.  **Implement `RiskEngineService`:** Create a service that runs as a periodic background task (e.g., every 60 seconds) to evaluate all `active` positions for a user.
-2.  **Implement Timer Logic:** When a `PositionGroup`'s state changes, check if a Risk Engine timer condition has been met (e.g., `after_5_pyramids`). If so, set the `risk_timer_expires` timestamp in the database.
-3.  **Implement Selection Logic:** Implement the `select_loser_and_winners` function from `6.2 Algorithm Specifications`, ensuring it strictly follows the priority rules (loss %, then loss $, then age).
-4.  **Implement Partial Close Calculator:** Implement the `calculate_partial_close_quantities` function, ensuring it correctly uses `Decimal` types and adheres to the symbol's precision rules (step size, min notional).
+0.  **Create Tests:** Write unit tests for all risk conditions, timer modes, and the winner/loser selection algorithms. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement `RiskEngineService`:** Create a service that runs as a periodic background task (e.g., every 60 seconds) to evaluate all `active` positions for a user. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Implement Timer Logic:** When a `PositionGroup`'s state changes, check if a Risk Engine timer condition has been met (e.g., `after_5_pyramids`). If so, set the `risk_timer_expires` timestamp in the database. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Implement Selection Logic:** Implement the `select_loser_and_winners` function from `6.2 Algorithm Specifications`, ensuring it strictly follows the priority rules (loss %, then loss $, then age). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement Partial Close Calculator:** Implement the `calculate_partial_close_quantities` function, ensuring it correctly uses `Decimal` types and adheres to the symbol's precision rules (step size, min notional). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 5.  **Execute Offset Atomically:** The service will, within a single database transaction:
-    - Call the `OrderService` to place market orders to partially close the winners and fully close the loser.
-    - Record the entire operation in the `RiskAction` table, linking to the loser and winner `PositionGroup`s.
-    - If any exchange order fails, the entire transaction must be rolled back to prevent a partial, inconsistent state.
-6.  **Implement Manual Controls:** Add API endpoints (`/api/risk/{group_id}/block` and `/api/risk/{group_id}/skip`) that allow the UI to set the `risk_blocked` or `risk_skip_once` flags on a `PositionGroup`.
+    - Call the `OrderService` to place market orders to partially close the winners and fully close the loser. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Record the entire operation in the `RiskAction` table, linking to the loser and winner `PositionGroup`s. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - If any exchange order fails, the entire transaction must be rolled back to prevent a partial, inconsistent state. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Implement Manual Controls:** Add API endpoints (`/api/risk/{group_id}/block` and `/api/risk/{group_id}/skip`) that allow the UI to set the `risk_blocked` or `risk_skip_once` flags on a `PositionGroup`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ The risk engine correctly identifies and offsets losing trades based on all SoW rules (timer, loss threshold, age, etc.). ✅ All three timer start conditions are implemented and selectable. ✅ Manual block/skip controls work as expected.
@@ -1360,6 +1373,7 @@ Implement the sophisticated, multi-conditional Risk Engine to offset losing trad
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 
 --- 
@@ -1372,18 +1386,19 @@ Implement the sophisticated, multi-conditional Risk Engine to offset losing trad
 Set up a modern, scalable, and maintainable frontend architecture with robust state management, routing, and API integration.
 
 #### Steps
-1.  **Initialize Project:** Use `create-react-app` with the TypeScript template.
-2.  **Install Core Libraries:** Add `react-router-dom`, `axios`, `zustand`, `@mui/material`, `@mui/x-data-grid`, `@emotion/react`, `@emotion/styled`, `react-hook-form`.
-3.  **Set up Folder Structure:** Create a standard folder structure: `/components` (reusable), `/features` (feature-specific components), `/pages`, `/hooks`, `/services`, `/state`, `/theme`.
+0.  **Create Tests:** Write unit tests for the Zustand store, authentication hooks, and WebSocket service. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Initialize Project:** Use `create-react-app` with the TypeScript template. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Install Core Libraries:** Add `react-router-dom`, `axios`, `zustand`, `@mui/material`, `@mui/x-data-grid`, `@emotion/react`, `@emotion/styled`, `react-hook-form`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Set up Folder Structure:** Create a standard folder structure: `/components` (reusable), `/features` (feature-specific components), `/pages`, `/hooks`, `/services`, `/state`, `/theme`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 4.  **Implement State Management:**
-    - Set up a Zustand store (`/state/useStore.ts`) for global state: User, Auth Token, System Status, Positions, Queued Signals.
-    - Define actions for logging in, logging out, and updating state from WebSocket events.
+    - Set up a Zustand store (`/state/useStore.ts`) for global state: User, Auth Token, System Status, Positions, Queued Signals. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Define actions for logging in, logging out, and updating state from WebSocket events. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 5.  **Configure API Client:** Create an `axios` instance in `/services/api.ts` with interceptors to:
-    - Automatically add the JWT `Authorization` header from the Zustand store.
-    - On `401 Unauthorized` responses, automatically call the logout action to clear user state and redirect to the login page.
-6.  **Implement Routing:** Set up `react-router-dom` with the following routes: `/login`, `/register`, and a `ProtectedRoute` component for `/`, `/positions`, `/queue`, `/risk`, `/logs`, `/settings`. A `NotFoundPage` will handle invalid routes.
-7.  **Create Theme:** Define a Material UI theme in `/theme/theme.ts` with light/dark mode palettes, typography, and global component overrides.
-8.  **Implement WebSocket Manager:** Create a `/services/websocket.ts` service and a `useWebSocket` hook. The service will manage the connection, handle automatic reconnection with exponential backoff, and call Zustand actions to update the store when new messages arrive.
+    - Automatically add the JWT `Authorization` header from the Zustand store. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - On `401 Unauthorized` responses, automatically call the logout action to clear user state and redirect to the login page. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Implement Routing:** Set up `react-router-dom` with the following routes: `/login`, `/register`, and a `ProtectedRoute` component for `/`, `/positions`, `/queue`, `/risk`, `/logs`, `/settings`. A `NotFoundPage` will handle invalid routes. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+7.  **Create Theme:** Define a Material UI theme in `/theme/theme.ts` with light/dark mode palettes, typography, and global component overrides. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+8.  **Implement WebSocket Manager:** Create a `/services/websocket.ts` service and a `useWebSocket` hook. The service will manage the connection, handle automatic reconnection with exponential backoff, and call Zustand actions to update the store when new messages arrive. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ A user can log in, the JWT is stored, and subsequent API calls are authenticated. ✅ Protected routes redirect unauthenticated users to `/login`. ✅ The UI can toggle between light and dark themes.
@@ -1403,6 +1418,7 @@ Set up a modern, scalable, and maintainable frontend architecture with robust st
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 2: UI Components & Views
 
@@ -1410,13 +1426,14 @@ Set up a modern, scalable, and maintainable frontend architecture with robust st
 Build all UI components and pages specified in the SoW, following the UI/UX Design System, with a focus on clarity, usability, and real-time data display.
 
 #### Steps
-1.  **Implement Layout:** Create a `MainLayout` component with a persistent sidebar, a header, and a main content area.
-2.  **Build Dashboard Page:** Implement the `DashboardPage` by creating individual components for each widget (`PoolUsageWidget`, `PnlCard`, `EquityCurveChart`) as defined in the wireframes.
-3.  **Build Positions Page:** Implement the `PositionsPage` following the defined component architecture (`PositionsTable`, `PositionRow`, `StatusChip`, `PnlCell`, `DcaLegsTable`). Use `MUI X Data Grid` for sortable, filterable columns.
-4.  **Build Risk Engine & Queue Pages:** Implement the dedicated pages for the Risk Engine and Waiting Queue, including their data tables and action buttons with the exact micro-interactions defined in the UX section (e.g., confirmation modals, loading states).
-5.  **Build Settings Page:** Implement the `SettingsPage` with tabbed navigation. Use `react-hook-form` for each settings section, providing real-time validation feedback for fields like API keys and numerical inputs.
-6.  **Build Logs Page:** Implement the `SystemLogsPage` with a virtualized list to handle large numbers of logs efficiently. Include controls for filtering by log level and a text search input.
-7.  **Connect Components to State:** Refactor all pages and components to subscribe to the Zustand store for live data. Ensure components re-render efficiently when the relevant parts of the state change.
+0.  **Create Tests:** Write Jest and React Testing Library tests for all major UI components and pages. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement Layout:** Create a `MainLayout` component with a persistent sidebar, a header, and a main content area. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Build Dashboard Page:** Implement the `DashboardPage` by creating individual components for each widget (`PoolUsageWidget`, `PnlCard`, `EquityCurveChart`) as defined in the wireframes. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Build Positions Page:** Implement the `PositionsPage` following the defined component architecture (`PositionsTable`, `PositionRow`, `StatusChip`, `PnlCell`, `DcaLegsTable`). Use `MUI X Data Grid` for sortable, filterable columns. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Build Risk Engine & Queue Pages:** Implement the dedicated pages for the Risk Engine and Waiting Queue, including their data tables and action buttons with the exact micro-interactions defined in the UX section (e.g., confirmation modals, loading states). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Build Settings Page:** Implement the `SettingsPage` with tabbed navigation. Use `react-hook-form` for each settings section, providing real-time validation feedback for fields like API keys and numerical inputs. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Build Logs Page:** Implement the `SystemLogsPage` with a virtualized list to handle large numbers of logs efficiently. Include controls for filtering by log level and a text search input. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+7.  **Connect Components to State:** Refactor all pages and components to subscribe to the Zustand store for live data. Ensure components re-render efficiently when the relevant parts of the state change. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ All pages and components from the SoW are implemented and match the wireframes. ✅ Data updates across the entire application in real-time without requiring a page refresh. ✅ All forms provide clear validation and feedback.
@@ -1436,6 +1453,7 @@ Build all UI components and pages specified in the SoW, following the UI/UX Desi
     - [ ] Unit Test Coverage > 85%
     - [ ] SoW Requirements Met
     - [ ] Documentation Updated
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ---
 
@@ -1447,26 +1465,27 @@ Build all UI components and pages specified in the SoW, following the UI/UX Desi
 Build a suite of end-to-end tests to verify that the entire application, from webhook ingestion to trade execution, works together as expected.
 
 #### Steps
-1.  **Set up Test Environment:** Use `docker-compose.test.yml` to create an isolated test environment with the app, a test database, and a mock exchange server that can simulate order fills and API errors.
-2.  **Write Test Scenarios:** Use `pytest` to write integration tests that make real API calls to the application running in the test environment.
+0.  **Define Test Cases:** Write end-to-end test cases in a feature file format (e.g., Gherkin). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Set up Test Environment:** Use `docker-compose.test.yml` to create an isolated test environment with the app, a test database, and a mock exchange server that can simulate order fills and API errors. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Write Test Scenarios:** Use `pytest` to write integration tests that make real API calls to the application running in the test environment. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 3.  **Test Full Signal Flow:**
-    - Send a valid webhook for a new position.
-    - Verify a `PositionGroup` is created with status `live`.
-    - Verify the correct number of `DCAOrder`s are created with status `open` via the mock exchange.
+    - Send a valid webhook for a new position. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Verify a `PositionGroup` is created with status `live`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Verify the correct number of `DCAOrder`s are created with status `open` via the mock exchange. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 4.  **Test Risk Engine Flow:**
-    - Programmatically create one `PositionGroup` with a negative PnL below the threshold and two `PositionGroup`s with positive PnL.
-    - Manually set the state to meet all risk criteria (timer expired, 5 pyramids).
-    - Trigger the risk engine evaluation endpoint.
-    - Verify that the mock exchange received a market close order for the loser and partial market close orders for the winners.
+    - Programmatically create one `PositionGroup` with a negative PnL below the threshold and two `PositionGroup`s with positive PnL. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Manually set the state to meet all risk criteria (timer expired, 5 pyramids). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Trigger the risk engine evaluation endpoint. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Verify that the mock exchange received a market close order for the loser and partial market close orders for the winners. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 5.  **Test Queue Promotion Flow:**
-    - Fill the execution pool by creating the max number of positions.
-    - Send a new signal and verify it creates a `QueuedSignal` entry.
-    - Send an exit signal for one of the live positions to free up a slot.
-    - Verify the queued signal is promoted and executed on the mock exchange.
+    - Fill the execution pool by creating the max number of positions. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Send a new signal and verify it creates a `QueuedSignal` entry. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Send an exit signal for one of the live positions to free up a slot. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Verify the queued signal is promoted and executed on the mock exchange. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 6.  **Test Recovery Flow:**
-    - Start a trade and ensure orders are `open`.
-    - Forcefully restart the `app` container.
-    - Verify that the startup reconciliation logic correctly identifies the `open` orders and continues monitoring them.
+    - Start a trade and ensure orders are `open`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Forcefully restart the `app` container. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - Verify that the startup reconciliation logic correctly identifies the `open` orders and continues monitoring them. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ The main user flows (trading, risk management, queueing, recovery) are tested end-to-end.
@@ -1482,6 +1501,7 @@ Build a suite of end-to-end tests to verify that the entire application, from we
     - [ ] Code Reviewed & Approved
     - [ ] Integration Tests Passing
     - [ ] SoW Requirements Met
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 2: Security & Error Handling
 
@@ -1489,12 +1509,13 @@ Build a suite of end-to-end tests to verify that the entire application, from we
 Harden the application against common vulnerabilities and ensure it handles all errors gracefully.
 
 #### Steps
-1.  **Implement Encryption:** Use the `cryptography` library to encrypt all user API keys before they are stored in the database. Create utility functions `encrypt_key` and `decrypt_key`.
-2.  **Implement Role-Based Access Control (RBAC):** Create a `RoleChecker` dependency that can be used as `Depends(RoleChecker(required_role='admin'))` on all admin-only API endpoints.
-3.  **Implement Global Exception Handler:** Create a FastAPI middleware that catches all unhandled `Exception` types, logs the full traceback, and returns a standardized `JSONResponse` with a generic error message and a unique request ID for correlation.
-4.  **Implement Circuit Breaker:** Use a library like `pybreaker` to wrap critical external calls in the `ExchangeConnector`s (e.g., `place_order`, `fetch_balance`). If an exchange API fails repeatedly, the circuit will open, preventing cascading failures.
-5.  **Perform Dependency Audit:** Integrate `pip-audit` into the CI pipeline to automatically scan for known vulnerabilities in Python dependencies on every commit.
-6.  **Harden Frontend Security:** Ensure all user-generated content (if any) is properly sanitized to prevent XSS. Implement CSRF protection if using cookie-based authentication.
+0.  **Create Tests:** Write unit tests for encryption, RBAC, and the global exception handler. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Implement Encryption:** Use the `cryptography` library to encrypt all user API keys before they are stored in the database. Create utility functions `encrypt_key` and `decrypt_key`. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Implement Role-Based Access Control (RBAC):** Create a `RoleChecker` dependency that can be used as `Depends(RoleChecker(required_role='admin'))` on all admin-only API endpoints. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Implement Global Exception Handler:** Create a FastAPI middleware that catches all unhandled `Exception` types, logs the full traceback, and returns a standardized `JSONResponse` with a generic error message and a unique request ID for correlation. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Implement Circuit Breaker:** Use a library like `pybreaker` to wrap critical external calls in the `ExchangeConnector`s (e.g., `place_order`, `fetch_balance`). If an exchange API fails repeatedly, the circuit will open, preventing cascading failures. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Perform Dependency Audit:** Integrate `pip-audit` into the CI pipeline to automatically scan for known vulnerabilities in Python dependencies on every commit. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Harden Frontend Security:** Ensure all user-generated content (if any) is properly sanitized to prevent XSS. Implement CSRF protection if using cookie-based authentication. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ Sensitive data (API keys) is encrypted at rest and is never exposed in API responses. ✅ Users can only access endpoints permitted by their role.
@@ -1511,6 +1532,7 @@ Harden the application against common vulnerabilities and ensure it handles all 
     - [ ] Code Reviewed & Approved
     - [ ] Security Scan Passing
     - [ ] SoW Requirements Met
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 3: Deployment & Packaging
 
@@ -1518,12 +1540,13 @@ Harden the application against common vulnerabilities and ensure it handles all 
 Package the application into self-contained, distributable installers for Windows and macOS.
 
 #### Steps
-1.  **Optimize Production Docker Image:** Create a multi-stage `Dockerfile` for the backend that uses a slim base image to create a small, secure production container.
-2.  **Configure PyInstaller:** Create a `pyinstaller.spec` file to bundle the FastAPI backend, all its dependencies, and any necessary data files into a single executable.
-3.  **Package Frontend:** Build the static React frontend (`npm run build`) and configure the FastAPI backend (using `StaticFiles`) to serve it from the executable.
-4.  **Create Windows Installer:** Use Inno Setup to create a `.exe` installer. The script will bundle the executable, create shortcuts, and set up an uninstaller.
-5.  **Create macOS Installer:** Use `dmgbuild` to create a `.dmg` disk image for macOS that allows the user to drag-and-drop the application into their `/Applications` folder.
-6.  **Implement Update Mechanism:** Integrate a library like `PyUpdater` or a simple version check against a remote JSON file to notify the user when a new version is available and provide a download link.
+0.  **Create Build Scripts:** Write build scripts to automate the packaging process for Windows and macOS. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+1.  **Optimize Production Docker Image:** Create a multi-stage `Dockerfile` for the backend that uses a slim base image to create a small, secure production container. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Configure PyInstaller:** Create a `pyinstaller.spec` file to bundle the FastAPI backend, all its dependencies, and any necessary data files into a single executable. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Package Frontend:** Build the static React frontend (`npm run build`) and configure the FastAPI backend (using `StaticFiles`) to serve it from the executable. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Create Windows Installer:** Use Inno Setup to create a `.exe` installer. The script will bundle the executable, create shortcuts, and set up an uninstaller. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+5.  **Create macOS Installer:** Use `dmgbuild` to create a `.dmg` disk image for macOS that allows the user to drag-and-drop the application into their `/Applications` folder. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+6.  **Implement Update Mechanism:** Integrate a library like `PyUpdater` or a simple version check against a remote JSON file to notify the user when a new version is available and provide a download link. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ The application can be installed and run on clean Windows 10/11 and macOS (Intel & Apple Silicon) machines without requiring the user to install Python or Node.js. ✅ The uninstaller correctly removes all application files.
@@ -1541,6 +1564,7 @@ Package the application into self-contained, distributable installers for Window
     - [ ] Code Reviewed & Approved
     - [ ] Successful Builds for Win/macOS
     - [ ] SoW Requirements Met
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ### Phase 4: Documentation
 
@@ -1548,15 +1572,16 @@ Package the application into self-contained, distributable installers for Window
 Create clear, comprehensive documentation for end-users, developers, and API consumers.
 
 #### Steps
+0.  **Create Documentation Structure:** Set up the documentation structure and templates. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 1.  **Write User Guide:** Create a multi-page guide (e.g., using MkDocs or a simple Markdown site) with sections for:
-    - 'Installation' (with screenshots for Windows and macOS).
-    - 'Connecting Your Exchange'.
-    - 'Configuring the Grid Strategy'.
-    - 'Understanding the Risk Engine'.
-    - 'Troubleshooting Common Issues'.
-2.  **Write Developer Guide:** Heavily update the `README.md` to include a "Quick Start" section, detailed instructions for setting up the development environment, running all tests (unit, integration), and building the project for production.
-3.  **Document API:** Add detailed docstrings, descriptions, and examples to each FastAPI endpoint and Pydantic model to ensure the auto-generated OpenAPI (`/docs`) spec is rich and descriptive.
-4.  **Document Architecture:** Create a high-level architecture diagram (e.g., using Mermaid.js in a Markdown file) and document the key design decisions and data flow in a `/docs` folder.
+    - 'Installation' (with screenshots for Windows and macOS). (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - 'Connecting Your Exchange'. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - 'Configuring the Grid Strategy'. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - 'Understanding the Risk Engine'. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+    - 'Troubleshooting Common Issues'. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+2.  **Write Developer Guide:** Heavily update the `README.md` to include a "Quick Start" section, detailed instructions for setting up the development environment, running all tests (unit, integration), and building the project for production. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+3.  **Document API:** Add detailed docstrings, descriptions, and examples to each FastAPI endpoint and Pydantic model to ensure the auto-generated OpenAPI (`/docs`) spec is rich and descriptive. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
+4.  **Document Architecture:** Create a high-level architecture diagram (e.g., using Mermaid.js in a Markdown file) and document the key design decisions and data flow in a `/docs` folder. (updating EP5.md with progress, updating GEMINI.md with learned lessons, staging+committing changes to git)
 
 #### Acceptance Criteria
 - **Functional:** ✅ A non-technical user can successfully install, configure, and run the application using only the User Guide. ✅ A new developer can set up and run the project and its tests in under 15 minutes using the Developer Guide.
@@ -1572,6 +1597,7 @@ Create clear, comprehensive documentation for end-users, developers, and API con
 3.  **Quality Gate Checklist:**
     - [ ] Documentation Reviewed & Approved
     - [ ] SoW Requirements Met
+4.  **End of Phase Action:** Push all commits to GitHub.
 
 ---
 
