@@ -22,13 +22,21 @@ const Settings = () => {
     }, []);
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
         const [section, key] = name.split('.');
+
+        let newValue = value;
+        if (type === 'number') {
+            newValue = parseFloat(value);
+        } else if (type === 'checkbox') {
+            newValue = checked;
+        }
+
         setConfig({
             ...config,
             [section]: {
                 ...config[section],
-                [key]: value,
+                [key]: newValue,
             },
         });
     };
@@ -167,7 +175,33 @@ const Settings = () => {
                 </label>
 
                 <h2>Grid Strategy</h2>
-                {/* TODO: Add inputs for dca_config and tp_config */}
+                <label>
+                    Max Pyramids Per Group:
+                    <input
+                        type="number"
+                        name="grid_strategy.max_pyramids_per_group"
+                        value={config.grid_strategy.max_pyramids_per_group}
+                        onChange={handleInputChange}
+                    />
+                </label>
+                <label>
+                    Max DCA Per Pyramid:
+                    <input
+                        type="number"
+                        name="grid_strategy.max_dca_per_pyramid"
+                        value={config.grid_strategy.max_dca_per_pyramid}
+                        onChange={handleInputChange}
+                    />
+                </label>
+                <label>
+                    TP Mode:
+                    <input
+                        type="text"
+                        name="grid_strategy.tp_mode"
+                        value={config.grid_strategy.tp_mode}
+                        onChange={handleInputChange}
+                    />
+                </label>
 
                 <h2>Risk Engine</h2>
                 <label>
