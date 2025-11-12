@@ -1,4 +1,4 @@
-# Execution Plan: From Current State to SoW-Compliant Execution Engine
+# Execution Plan v2.0: From Current State to SoW-Compliant Execution Engine
 
 ## 1. Introduction
 
@@ -9,427 +9,364 @@ This document outlines the development plan to upgrade the application from its 
 The project has a solid foundation, with a well-structured backend and a component-based frontend. However, there are several significant discrepancies between the current implementation and the `SoW.md`, particularly in the core trading logic, risk management, and UI. The application is not yet feature-complete and requires further development to meet the client's requirements.
 
 **Backend:**
-
-The backend is built on a clean, service-oriented architecture, with a clear separation of concerns into `api`, `core`, `db`, `middleware`, `models`, `schemas`, and `services`. However, several of the core services contain placeholder logic and do not fully implement the functionality described in the SoW. The key areas that require attention are:
-
-*   **Grid Trading Logic:** The DCA calculation, take-profit modes, and exit logic are incomplete.
-*   **Precision Validation:** The precision validation logic is missing key features, such as periodic background fetching, correct user ID handling, and a notional value check.
-*   **Execution Pool & Queue:** The execution pool and queue are not fully functional, with incorrect slot calculation, incomplete slot management, and placeholder priority logic.
-*   **Risk Engine:** The risk engine is missing key features, such as complete timer logic, accurate offset execution, and respect for the `max_winners_to_combine` setting.
+The backend is built on a clean, service-oriented architecture. However, several core services contain placeholder logic and do not fully implement the functionality described in the SoW. Key areas requiring attention are: Grid Trading Logic, Precision Validation, Execution Pool & Queue, and the Risk Engine.
 
 **Frontend:**
+The frontend has a solid component-based architecture, but most UI features are placeholders. Key areas requiring attention are: Live Dashboard, Positions View, Risk Engine Panel, Queue View, Logs & Alerts, Settings Panel, and the Performance Dashboard.
 
-The frontend has a solid component-based architecture, with a clear separation of concerns into different feature areas. However, several key UI features described in the SoW are either missing or incomplete. The key areas that require attention are:
+This plan will address these issues in a structured and test-driven manner.
 
-*   **Live Dashboard:** The main dashboard is a placeholder and does not contain any of the required widgets or metrics.
-*   **Positions & Pyramids View:** The positions view is a placeholder and does not contain the required table or expandable detailed DCA view.
-*   **Risk Engine Panel:** There is no page for the Risk Engine Panel.
-*   **Waiting Queue View:** There is no page for the Waiting Queue View.
-*   **Logs & Alerts:** The log viewer is a placeholder and does not contain any of the required features.
-*   **Settings Panel:** The settings panel is a placeholder and does not contain any of the required features.
-*   **Performance & Portfolio Dashboard:** The performance dashboard is a placeholder and does not contain any of the required metrics or charts.
-
-This plan will address these issues in a structured and test-driven manner, starting with the backend and then moving on to the frontend.
+---
 
 ## 2. Backend Development Plan
 
-### Phase 1: Execution Pool & Queue
+### Phase 1: Database Architecture
 
 **Description:**
-
-The execution pool and queue are fundamental to the system's ability to manage concurrent positions and prioritize signals. The current implementation has several significant discrepancies with the `SoW.md`, including incorrect slot calculation, incomplete slot management, and placeholder priority logic. This phase will address these issues and ensure that the execution pool and queue are fully functional and compliant with the SoW.
+This phase will focus on designing and implementing the full data model for the application, including the database schema, migrations, and data access layer.
 
 **Steps:**
-
-1.  **Write Unit Tests for `pool_manager.py`:**
-    *   Write a test to verify that `get_open_slots` correctly calculates the number of available slots.
-    *   Write a test to verify that `can_open_position` correctly returns `True` when there are available slots and `False` when the pool is full.
-    *   Write a test to verify that `consume_slot` correctly decrements the number of available slots.
-    *   Write a test to verify that `release_slot` correctly increments the number of available slots.
-    *   Write a test to verify that pyramid entries do not consume a new pool slot.
-2.  **Implement `pool_manager.py`:**
-    *   Implement the `get_open_slots`, `can_open_position`, `consume_slot`, and `release_slot` functions to correctly manage the execution pool.
-    *   Implement the logic to handle pyramid entries without consuming a new pool slot.
-3.  **Write Unit Tests for `queue_service.py`:**
-    *   Write a test to verify that `calculate_priority` correctly calculates the priority of a signal based on the SoW's priority rules (pyramid continuation, deepest loss percentage, highest replacement count, FIFO).
-    *   Write a test to verify that `promote_from_queue` correctly promotes the highest priority signal from the queue.
-    *   Write a test to verify that pyramid continuations of active groups are selected first and bypass the max position limit.
-4.  **Implement `queue_service.py`:**
-    *   Implement the `calculate_priority` function to correctly calculate the priority of a signal based on the SoW's priority rules.
-    *   Implement the `promote_from_queue` function to correctly promote the highest priority signal from the queue.
-    *   Implement the logic to handle pyramid continuations of active groups.
+1.  **Design Complete Schema:** Design the complete database schema for all the required tables (positions, groups, orders, signals, logs, risk_analysis, etc.).
+2.  **Implement Database Migrations:** Implement database migrations using Alembic for schema evolution.
+3.  **Create Repository Pattern for Data Access:** Create a repository pattern for accessing the database to abstract data logic.
+4.  **Add Connection Pooling:** Configure and add connection pooling to the database connection for performance.
+5.  **Implement Transaction Management:** Implement robust transaction management for all database operations to ensure data integrity.
+6.  **Create Backup/Restore Procedures:** Script and document procedures for database backup and restore.
+7.  **Add Database Health Checks:** Add database health checks to the application's health monitoring endpoint.
 
 **Acceptance Criteria:**
+*   **Functional:** The database schema fully supports all entities and relationships required by the SoW.
+*   **Technical:** Migrations are repeatable and reversible. The repository pattern is used for all data access.
+*   **Test Coverage:** Unit tests cover all repository methods.
+*   **Error Handling:** The application handles database connection failures gracefully.
 
-*   The execution pool correctly limits the number of active `PositionGroup`s.
-*   Pyramid entries do not consume a new pool slot.
-*   The queue correctly prioritizes signals based on the SoW's priority rules.
-*   Pyramid continuations of active groups are selected first and bypass the max position limit.
-
-### Phase 2: Grid Trading Logic
+### Phase 2: Webhook & Signal Processing
 
 **Description:**
-
-The grid trading logic is the core of the trading strategy. The current implementation has several discrepancies with the `SoW.md`, including an inflexible DCA calculation, a single take-profit percentage for all DCA levels, and missing logic for the different take-profit modes and exit signals. This phase will address these issues and ensure that the grid trading logic is fully functional and compliant with the SoW.
+This phase will focus on implementing the full webhook validation and parsing system, ensuring that all incoming signals are correctly authenticated, parsed, and validated before being processed.
 
 **Steps:**
-
-1.  **Write Unit Tests for `grid_calculator.py`:**
-    *   Write a test to verify that `calculate_dca_levels` correctly calculates the DCA levels based on the SoW's per-layer configuration.
-    *   Write a test to verify that `calculate_take_profit_prices` correctly calculates the take-profit price for each DCA leg.
-2.  **Implement `grid_calculator.py`:**
-    *   Implement the `calculate_dca_levels` function to correctly calculate the DCA levels based on the SoW's per-layer configuration.
-    *   Implement the `calculate_take_profit_prices` function to correctly calculate the take-profit price for each DCA leg.
-3.  **Write Unit Tests for `take_profit_service.py`:**
-    *   Write a test to verify that `check_take_profit_conditions` correctly checks for take-profit conditions for all three take-profit modes (`Per-Leg`, `Aggregate`, `Hybrid`).
-    *   Write a test to verify that the correct take-profit orders are placed when a take-profit condition is met.
-    *   Write a test to verify that exit signals from TradingView are correctly handled.
-4.  **Implement `take_profit_service.py`:**
-    *   Implement the `check_take_profit_conditions` function to correctly check for take-profit conditions for all three take-profit modes.
-    *   Implement the logic to place the correct take-profit orders when a take-profit condition is met.
-    *   Implement the logic to handle exit signals from TradingView.
+1.  **Implement Webhook Signature Validation:** Implement a middleware or dependency to validate webhook signatures using a shared secret.
+2.  **Create Signal Parser:** Create a robust parser for the TradingView JSON payload structure.
+3.  **Build Signal Validator:** Build a validator for signals (required fields, type checking) using Pydantic models.
+4.  **Implement Signal Routing Logic:** Create logic to route signals based on their intent (new group vs. pyramid vs. exit).
+5.  **Add Webhook Replay Functionality:** Implement a debugging endpoint to replay webhook payloads.
+6.  **Implement Rate Limiting and Duplicate Detection:** Add middleware to prevent duplicate signal processing and limit request frequency.
 
 **Acceptance Criteria:**
+*   **Functional:** All incoming webhooks are correctly authenticated, parsed, and validated against the SoW's payload structure.
+*   **Technical:** Pydantic models are used for validation. A dedicated service handles signal routing.
+*   **Test Coverage:** Unit tests cover valid/invalid signatures, malformed payloads, and routing logic.
+*   **Security:** Only authenticated webhooks are processed.
 
-*   The DCA calculation is flexible and allows for per-layer configuration of `price_gap` and `capital_weight`.
-*   The take-profit calculation is per-leg, as specified in the SoW.
-*   All three take-profit modes (`Per-Leg`, `Aggregate`, `Hybrid`) are implemented and working correctly.
-*   Exit signals from TradingView are correctly handled.
-
-### Phase 3: Risk Engine
+### Phase 3: Exchange Abstraction Layer
 
 **Description:**
-
-The risk engine is a critical component for managing risk. The current implementation has several discrepancies with the `SoW.md`, including a placeholder `evaluate_risk_conditions` function, incomplete timer logic, simplified offset execution, and no respect for the `max_winners_to_combine` setting. This phase will address these issues and ensure that the risk engine is fully functional and compliant with the SoW.
+This phase will focus on creating a flexible and extensible exchange integration layer that can support multiple exchanges.
 
 **Steps:**
-
-1.  **Write Unit Tests for `risk_engine.py`:**
-    *   Write a test to verify that `evaluate_risk_conditions` correctly evaluates the risk conditions for a position group.
-    *   Write a test to verify that the timer logic for activating the risk engine is working correctly for all three timer start conditions (`after_5_pyramids`, `after_all_dca_submitted`, `after_all_dca_filled`).
-    *   Write a test to verify that the offset execution logic correctly calculates the amount to close on winning positions.
-    *   Write a test to verify that the `execute_risk_mitigation` function respects the `max_winners_to_combine` setting.
-2.  **Implement `risk_engine.py`:**
-    *   Implement the `evaluate_risk_conditions` function to correctly evaluate the risk conditions for a position group.
-    *   Implement the timer logic for activating the risk engine for all three timer start conditions.
-    *   Implement the offset execution logic to correctly calculate the amount to close on winning positions.
-    *   Implement the `execute_risk_mitigation` function to respect the `max_winners_to_combine` setting.
+1.  **Design Exchange Interface:** Design an abstract base class (`ExchangeInterface`) defining a common interface for all exchange operations.
+2.  **Implement Binance Connector:** Implement a `BinanceConnector` that inherits from the interface.
+3.  **Implement Bybit Connector:** Implement a `BybitConnector` that inherits from the interface.
+4.  **Add Precision Fetching per Exchange:** Implement the logic for fetching and caching precision rules for each supported exchange.
+5.  **Standardize Order Response Formats:** Create a set of internal Pydantic models to standardize responses from different exchanges.
+6.  **Implement Exchange-Specific Error Mapping:** Map common exchange errors (e.g., `InsufficientFunds`, `InvalidOrder`) to a set of application-level exceptions.
+7.  **Add Testnet Toggle Support:** Implement a testnet toggle for each supported exchange connector.
+8.  **Create Exchange Health Monitoring:** Add methods to check API connectivity and account status for each exchange.
 
 **Acceptance Criteria:**
+*   **Functional:** The system can connect to and execute trades on both Binance and Bybit.
+*   **Technical:** All exchange interactions go through the abstraction layer. Connectors are interchangeable.
+*   **Test Coverage:** Unit tests with mock exchange APIs for each connector.
+*   **Error Handling:** Exchange-specific errors are caught and mapped to standardized application exceptions.
 
-*   The `evaluate_risk_conditions` function correctly evaluates the risk conditions for a position group.
-*   The timer logic for activating the risk engine is working correctly for all three timer start conditions.
-*   The offset execution logic correctly calculates the amount to close on winning positions.
-*   The `execute_risk_mitigation` function respects the `max_winners_to_combine` setting.
-
-### Phase 4: Precision Validation
+### Phase 4: Order Management Service
 
 **Description:**
-
-The precision validation logic is a critical step to ensure zero API rejections from the exchange. The current implementation has several discrepancies with the `SoW.md`, including on-demand fetching of precision rules, a hardcoded dummy user ID, incomplete "hold signal" logic, and a missing notional value check. This phase will address these issues and ensure that the precision validation logic is fully functional and compliant with the SoW.
+This phase will focus on implementing a robust and reliable order management system that can handle the full lifecycle of an order.
 
 **Steps:**
-
-1.  **Write Unit Tests for `precision_service.py`:**
-    *   Write a test to verify that precision rules are fetched periodically in the background.
-    *   Write a test to verify that the correct user ID is used for fetching precision rules.
-2.  **Implement `precision_service.py`:**
-    *   Implement the logic to fetch precision rules periodically in the background.
-    *   Implement the logic to use the correct user ID for fetching precision rules.
-3.  **Write Unit Tests for `validation_service.py`:**
-    *   Write a test to verify that the "hold signal" logic is correctly implemented.
-    *   Write a test to verify that the notional value check is correctly implemented.
-4.  **Implement `validation_service.py`:**
-    *   Implement the "hold signal" logic to hold or queue a signal if precision data is missing.
-    *   Implement the notional value check to ensure that an order meets the minimum notional value.
+1.  **Implement Order Submission with Retry Logic:** Implement the logic for submitting orders to the exchange with a configurable number of retries on failure.
+2.  **Create Order Fill Monitoring Loop:** Implement a background task that periodically queries the exchange for the status of open orders.
+3.  **Add Partial Fill Handling:** Implement logic to handle and record partial order fills.
+4.  **Implement Order Cancellation Workflow:** Implement the logic for cancelling open orders on the exchange.
+5.  **Create Order State Machine:** Implement an order state machine (`pending`, `open`, `partially_filled`, `filled`, `cancelled`) to track the status of each order.
+6.  **Add Order Reconciliation on Startup:** Implement logic to reconcile the status of open orders on application startup.
+7.  **Implement Emergency Close All Functionality:** Create a service function to close all open positions for a user in an emergency.
 
 **Acceptance Criteria:**
+*   **Functional:** The system can reliably place, monitor, and cancel orders, and handle partial fills.
+*   **Technical:** Order states are managed by a state machine. A background task handles monitoring.
+*   **Test Coverage:** Unit tests for all state transitions and order operations.
+*   **Performance:** Order status checks are batched to avoid hitting rate limits.
+*   **Error Handling:** The system can recover from failures and reconcile order status on startup.
 
-*   Precision rules are fetched periodically in the background.
-*   The correct user ID is used for fetching precision rules.
-*   The "hold signal" logic is correctly implemented.
-*   The notional value check is correctly implemented.
+### Phase 5: Grid Trading Logic
+
+**Description:**
+This phase will address the core trading strategy, including DCA calculation, take-profit modes, and exit signals, ensuring full compliance with the SoW.
+
+**Steps:**
+1.  **Implement Per-Layer Configuration Parser:** Implement a parser for the per-layer DCA and TP configuration.
+2.  **Create DCA Price Calculator with Rounding:** Create a DCA price calculator that incorporates precision rounding.
+3.  **Build TP Price Calculator:** Build a TP price calculator that can handle all three modes: `Per-Leg`, `Aggregate`, and `Hybrid`.
+4.  **Implement Fill Price Tracking:** Implement logic to track the actual fill price of each order.
+5.  **Create Weighted Average Entry Calculator:** Create a calculator for the weighted average entry price of a position.
+6.  **Add DCA Cancellation on Exit Logic:** Implement logic to cancel all unfilled DCA orders when an exit signal is received.
+7.  **Implement Unfilled Order Cleanup:** Implement a cleanup process for any unfilled orders that are no longer valid.
+8.  **Create Grid State Persistence:** Ensure that the state of the grid is persisted to the database.
+
+**Acceptance Criteria:**
+*   **Functional:** The DCA calculation is flexible and allows for per-layer configuration. All three take-profit modes are implemented and working correctly. Exit signals are handled correctly.
+*   **Technical:** Calculations are performed using the `Decimal` type for precision.
+*   **Test Coverage:** Unit tests for each calculation and take-profit mode.
+*   **Performance:** Grid calculations are performed efficiently.
+
+### Phase 6: Execution Pool & Queue
+
+**Description:**
+This phase will implement the system for managing concurrent positions and prioritizing incoming signals according to the SoW.
+
+**Steps:**
+1.  **Implement `pool_manager.py`:** Implement the `get_open_slots`, `can_open_position`, `consume_slot`, and `release_slot` functions to correctly manage the execution pool.
+2.  **Implement Priority Score Calculator:** Implement a priority score calculator with the four-tier system (pyramid continuation, deepest loss %, highest replacement count, FIFO).
+3.  **Create Signal Replacement Detection Logic:** Implement logic to detect and handle replacement signals in the queue.
+4.  **Build Queue Promotion Algorithm:** Build the algorithm to promote signals from the queue based on their priority score.
+5.  **Add Queue Size Limit Enforcement:** Add enforcement for the maximum queue size.
+6.  **Implement Queue Overflow Handling:** Implement logic to handle queue overflow.
+7.  **Create Time-in-Queue Tracker:** Implement a tracker for the time each signal spends in the queue.
+8.  **Add Force Promote Functionality:** Add a manual override to force a signal to be promoted from the queue.
+9.  **Implement Queue Persistence on Shutdown:** Implement logic to persist the queue to the database on shutdown.
+
+**Acceptance Criteria:**
+*   **Functional:** The execution pool correctly limits active positions. The queue correctly prioritizes signals based on the SoW's rules.
+*   **Technical:** Pool and queue operations are atomic and thread-safe.
+*   **Test Coverage:** Unit tests for all pool and queue operations, including priority calculation and promotion.
+*   **Performance:** Queue and pool checks are performed in <10ms.
+
+### Phase 7: Risk Engine
+
+**Description:**
+This phase will implement the sophisticated, multi-conditional Risk Engine to offset losing trades with profits from winners.
+
+**Steps:**
+1.  **Implement Configurable Timer:** Implement a configurable timer with the three start modes (`after_5_pyramids`, `after_all_dca_submitted`, `after_all_dca_filled`).
+2.  **Create Timer Reset Logic:** Create the timer reset logic for when a replacement signal is received.
+3.  **Build Age Filter:** Build the age filter with a configurable threshold.
+4.  **Implement Winner Selection Algorithm:** Implement the winner selection algorithm that ranks winners by profit in USD.
+5.  **Create Partial Close Quantity Calculator:** Create a calculator for the partial close quantity needed to realize a specific profit.
+6.  **Add `max_winners_to_combine` Enforcement:** Add enforcement for the `max_winners_to_combine` setting.
+7.  **Implement Risk Action Logging:** Implement logging of all risk actions to the `RiskAnalysis` table.
+8.  **Create Risk Projection Calculator for UI:** Create a calculator to project the outcome of a risk action for the UI.
+9.  **Add Manual Override Controls:** Add manual override controls (Run Now, Skip, Block) for the risk engine.
+
+**Acceptance Criteria:**
+*   **Functional:** The risk engine correctly identifies and offsets losing trades based on the SoW's rules. All three timer modes are implemented.
+*   **Technical:** Risk engine evaluations are performed in a background task.
+*   **Test Coverage:** Unit tests for all risk conditions, timer modes, and selection algorithms.
+*   **Performance:** Risk engine evaluations are performed efficiently.
+
+---
 
 ## 3. Frontend Development Plan
 
-### Phase 1: Live Dashboard
+### Phase 1: Frontend Architecture Setup
 
 **Description:**
-
-The live dashboard is the main control screen for the application. The current implementation is a placeholder and does not contain any of the required widgets or metrics. This phase will address this issue and ensure that the live dashboard is fully functional and compliant with the SoW.
+This phase will focus on setting up the frontend architecture, including the project structure, state management, routing, API client, and component library.
 
 **Steps:**
-
-1.  **Write Unit Tests for `DashboardPage.jsx`:**
-    *   Write a test to verify that the `Total Active Position Groups` widget is correctly displayed.
-    *   Write a test to verify that the `Execution Pool Usage` widget is correctly displayed.
-    *   Write a test to verify that the `Queued Signals Count` widget is correctly displayed.
-    *   Write a test to verify that the `Total PnL` widget is correctly displayed.
-    *   Write a test to verify that the `Last Webhook Timestamp` widget is correctly displayed.
-    *   Write a test to verify that the `Engine Status Banner` widget is correctly displayed.
-    *   Write a test to verify that the `Risk Engine Status` widget is correctly displayed.
-    *   Write a test to verify that the `Error & Warning Alerts` widget is correctly displayed.
-2.  **Implement `DashboardPage.jsx`:**
-    *   Implement the `Total Active Position Groups` widget.
-    *   Implement the `Execution Pool Usage` widget.
-    *   Implement the `Queued Signals Count` widget.
-    *   Implement the `Total PnL` widget.
-    *   Implement the `Last Webhook Timestamp` widget.
-    *   Implement the `Engine Status Banner` widget.
-    *   Implement the `Risk Engine Status` widget.
-    *   Implement the `Error & Warning Alerts` widget.
+1.  **Set up React Project with TypeScript:** Set up a new React project with TypeScript.
+2.  **Configure State Management:** Configure a state management library (e.g., Redux Toolkit, Zustand).
+3.  **Set up React Router:** Set up React Router for routing.
+4.  **Configure API Client:** Configure an API client (e.g., Axios, Fetch) with interceptors for handling authentication and errors.
+5.  **Implement Authentication Context:** Implement an authentication context to manage the user's authentication state.
+6.  **Set up WebSocket Connection Manager:** Set up a WebSocket connection manager for real-time updates.
+7.  **Create Error Boundary Components:** Create error boundary components to handle errors gracefully.
+8.  **Configure Theme Provider:** Configure a theme provider for light and dark mode.
+9.  **Set up Component Library:** Set up a component library (e.g., Material-UI, Ant Design).
+10. **Implement Loading and Notification Systems:** Implement loading and notification systems.
 
 **Acceptance Criteria:**
+*   The frontend architecture is well-structured and scalable.
+*   The state management, routing, and API client are correctly configured.
+*   The authentication context, WebSocket connection manager, and error boundary components are implemented.
 
-*   All the required widgets and metrics are displayed on the live dashboard.
-*   The data displayed on the live dashboard is accurate and up-to-date.
-
-### Phase 2: Positions & Pyramids View
+### Phase 2: Real-time Data Layer
 
 **Description:**
-
-The positions view is the primary interface for monitoring trades. The current implementation is a placeholder and does not contain the required table or expandable detailed DCA view. This phase will address this issue and ensure that the positions view is fully functional and compliant with the SoW.
+This phase will focus on implementing the real-time data layer, which will be responsible for fetching and synchronizing data between the frontend and the backend.
 
 **Steps:**
-
-1.  **Write Unit Tests for `PositionsPage.jsx`:**
-    *   Write a test to verify that the positions table is correctly displayed with all the required columns (Pair/Timeframe, Pyramids, DCA Filled, Avg Entry, Unrealized PnL, TP Mode, and Status).
-    *   Write a test to verify that the expandable detailed DCA view is correctly displayed with all the required fields (Leg ID, Fill Price, Capital Weight, TP Target, Progress, Filled Size, and State).
-2.  **Implement `PositionsPage.jsx`:**
-    *   Implement the positions table with all the required columns.
-    *   Implement the expandable detailed DCA view with all the required fields.
+1.  **Implement WebSocket Client:** Implement a WebSocket client for receiving real-time updates from the backend.
+2.  **Create Data Synchronization Service:** Create a data synchronization service to manage the flow of data between the frontend and the backend.
+3.  **Add Optimistic UI Updates:** Add optimistic UI updates to improve the user experience.
+4.  **Implement Polling Fallback Mechanism:** Implement a polling fallback mechanism for browsers that do not support WebSockets.
+5.  **Create Data Caching Strategy:** Create a data caching strategy to improve performance.
+6.  **Add Stale Data Detection:** Add stale data detection to ensure that the data displayed in the UI is always up-to-date.
+7.  **Implement Reconnection Logic:** Implement reconnection logic to automatically reconnect to the backend if the connection is lost.
 
 **Acceptance Criteria:**
+*   The real-time data layer is robust and reliable.
+*   The data displayed in the UI is always up-to-date.
+*   The user experience is smooth and responsive.
 
-*   The positions table is correctly displayed with all the required columns.
-*   The expandable detailed DCA view is correctly displayed with all the required fields.
-*   The data displayed in the positions view is accurate and up-to-date.
-
-### Phase 3: Settings Panel
+### Phase 3: UI Components & Views
 
 **Description:**
-
-The settings panel is essential for configuring the engine. The current implementation is a placeholder and does not contain any of the required features. This phase will address this issue and ensure that the settings panel is fully functional and compliant with the SoW.
+This phase will focus on building all the UI components and views as specified in the SoW.
 
 **Steps:**
-
-1.  **Write Unit Tests for `SettingsPage.jsx`:**
-    *   Write a test to verify that all the editable parameters for Exchange API, Precision Control, Execution Pool, Risk Engine, TP Mode, Local Storage, and Theme & UI are correctly displayed.
-    *   Write a test to verify that the Live Preview Panel is correctly displayed.
-    *   Write a test to verify that the "Apply & Restart Engine" Button is correctly displayed and functional.
-    *   Write a test to verify that the Validation Layer is correctly implemented.
-    *   Write a test to verify that the Backup & Restore functionality is correctly implemented.
-    *   Write a test to verify that the Readonly Mode is correctly implemented.
-2.  **Implement `SettingsPage.jsx`:**
-    *   Implement all the editable parameters for Exchange API, Precision Control, Execution Pool, Risk Engine, TP Mode, Local Storage, and Theme & UI.
-    *   Implement the Live Preview Panel.
-    *   Implement the "Apply & Restart Engine" Button.
-    *   Implement the Validation Layer.
-    *   Implement the Backup & Restore functionality.
-    *   Implement the Readonly Mode.
+1.  **Implement Live Dashboard:** Implement the Live Dashboard with all the required widgets and metrics.
+2.  **Implement Positions & Pyramids View:** Implement the Positions & Pyramids View with the required table and expandable detailed DCA view.
+3.  **Implement Risk Engine Panel:** Implement the Risk Engine Panel with all the required fields and action buttons.
+4.  **Implement Waiting Queue View:** Implement the Waiting Queue View with the required table and action buttons.
+5.  **Implement Logs & Alerts:** Implement the Logs & Alerts view with all the required features.
+6.  **Implement Settings Panel:** Implement the Settings Panel with all the required features.
+7.  **Implement Performance & Portfolio Dashboard:** Implement the Performance & Portfolio Dashboard with all the required metrics and charts.
 
 **Acceptance Criteria:**
+*   All UI components and views are implemented as specified in the SoW.
+*   The UI is intuitive, easy to use, and provides all the necessary information to the user.
 
-*   All the required settings are editable in the UI.
-*   The Live Preview Panel correctly displays the changes before they are applied.
-*   The "Apply & Restart Engine" Button correctly applies the changes and restarts the engine.
-*   The Validation Layer correctly prevents invalid configuration.
-*   The Backup & Restore functionality correctly backs up and restores the configuration.
-*   The Readonly Mode correctly prevents unauthorized users from making changes.
+---
 
-### Phase 4: Logs & Alerts
+## 4. Cross-Cutting Phases
+
+### Phase 1: Integration Testing
 
 **Description:**
-
-The log viewer is a critical tool for debugging and troubleshooting. The current implementation is a placeholder and does not contain any of the required features. This phase will address this issue and ensure that the log viewer is fully functional and compliant with the SoW.
+This phase will focus on building a suite of integration tests to verify that the core services of the application work together as expected.
 
 **Steps:**
-
-1.  **Write Unit Tests for `SystemLogsPage.jsx`:**
-    *   Write a test to verify that the Log Categories/Filters are correctly displayed and functional.
-    *   Write a test to verify that the Search & Filter Toolbar is correctly displayed and functional.
-    *   Write a test to verify that the Auto-Scroll Toggle is correctly displayed and functional.
-    *   Write a test to verify that the Color-Coded Severity is correctly implemented.
-    *   Write a test to verify that the Highlight Critical Failures is correctly implemented.
-    *   Write a test to verify that the Export Options are correctly displayed and functional.
-    *   Write a test to verify that the Pinned Alert Strip is correctly displayed.
-    *   Write a test to verify that the Webhook Replay Button is correctly displayed and functional.
-    *   Write a test to verify that the Log Retention Setting is correctly displayed and functional.
-2.  **Implement `SystemLogsPage.jsx`:**
-    *   Implement the Log Categories/Filters.
-    *   Implement the Search & Filter Toolbar.
-    *   Implement the Auto-Scroll Toggle.
-    *   Implement the Color-Coded Severity.
-    *   Implement the Highlight Critical Failures.
-    *   Implement the Export Options.
-    *   Implement the Pinned Alert Strip.
-    *   Implement the Webhook Replay Button.
-    *   Implement the Log Retention Setting.
+1.  **Create Mock Exchange:** Create a mock exchange for testing.
+2.  **Build End-to-End Test Scenarios:** Build end-to-end test scenarios for the most critical user flows.
+3.  **Test Signal-to-Order Full Flow:** Test the full flow from receiving a signal to placing an order.
+4.  **Test Risk Engine Trigger Scenarios:** Test the different scenarios that can trigger the risk engine.
+5.  **Test Queue Promotion Logic:** Test the queue promotion logic.
+6.  **Simulate Exchange Errors:** Simulate exchange errors to test the error handling logic.
+7.  **Test Recovery After Crash:** Test the application's ability to recover after a crash.
+8.  **Performance Test with 100+ Concurrent Positions:** Performance test the application with a high number of concurrent positions.
 
 **Acceptance Criteria:**
+*   The application is robust and can handle a wide range of scenarios.
+*   The application can recover from failures.
+*   The application can handle a high number of concurrent positions.
 
-*   All the required features are implemented in the log viewer.
-*   The log viewer is easy to use and provides all the necessary information for debugging and troubleshooting.
-
-### Phase 5: Risk Engine Panel & Waiting Queue View
+### Phase 2: Monitoring & Observability
 
 **Description:**
-
-The Risk Engine Panel and Waiting Queue View are important for monitoring the risk engine and queue. The current implementation is missing these views. This phase will address this issue and ensure that these views are fully functional and compliant with the SoW.
+This phase will focus on implementing monitoring and observability features to ensure that the application is running smoothly and that any issues can be quickly identified and resolved.
 
 **Steps:**
-
-1.  **Write Unit Tests for `RiskEnginePage.jsx`:**
-    *   Write a test to verify that the Risk Engine Panel is correctly displayed with all the required fields (Loss %, Loss USD, Timer Remaining, 5 Pyramids Reached, Age Filter Passed, Available Winning Offsets, and Projected Plan).
-    *   Write a test to verify that the action buttons for Run Now, Skip Once, and Block Group are correctly displayed and functional.
-2.  **Implement `RiskEnginePage.jsx`:**
-    *   Implement the Risk Engine Panel with all the required fields.
-    *   Implement the action buttons for Run Now, Skip Once, and Block Group.
-3.  **Write Unit Tests for `QueuePage.jsx`:**
-    *   Write a test to verify that the Waiting Queue Table is correctly displayed with all the required columns (Pair/Timeframe, Replacement Count, Expected Profit, Time in Queue, and Priority Rank).
-    *   Write a test to verify that the action buttons for Promote, Remove, and Force Add to Pool are correctly displayed and functional.
-4.  **Implement `QueuePage.jsx`:**
-    *   Implement the Waiting Queue Table with all the required columns.
-    *   Implement the action buttons for Promote, Remove, and Force Add to Pool.
+1.  **Implement Structured Logging:** Implement structured logging throughout the application.
+2.  **Create Performance Metrics Collection:** Create a system for collecting performance metrics.
+3.  **Add Health Check Endpoints:** Add health check endpoints to the application.
+4.  **Implement Alert Thresholds:** Implement alert thresholds for key performance metrics.
+5.  **Create Diagnostic Dump Functionality:** Create a functionality to dump diagnostic information for debugging.
+6.  **Add Memory Profiling Hooks:** Add memory profiling hooks to the application.
+7.  **Implement Request/Response Logging:** Implement request/response logging for all API endpoints.
 
 **Acceptance Criteria:**
+*   The application is easy to monitor and debug.
+*   Any issues can be quickly identified and resolved.
 
-*   The Risk Engine Panel is correctly displayed with all the required fields and action buttons.
-*   The Waiting Queue View is correctly displayed with all the required columns and action buttons.
-*   The data displayed in these views is accurate and up-to-date.
-
-### Phase 6: Performance & Portfolio Dashboard
+### Phase 3: Configuration Management
 
 **Description:**
-
-The performance dashboard is a valuable tool for analyzing trading performance. The current implementation is a placeholder and does not contain any of the required metrics or charts. This phase will address this issue and ensure that the performance dashboard is fully functional and compliant with the SoW.
+This phase will focus on implementing a robust and flexible configuration management system.
 
 **Steps:**
-
-1.  **Write Unit Tests for `PerformancePage.jsx`:**
-    *   Write a test to verify that the PnL Metrics are correctly displayed.
-    *   Write a test to verify that the Equity Curve is correctly displayed.
-    *   Write a test to verify that the Win/Loss Stats are correctly displayed.
-    *   Write a test to verify that the Trade Distribution is correctly displayed.
-    *   Write a test to verify that the Risk Metrics are correctly displayed.
-    *   Write a test to verify that the Capital Allocation View is correctly displayed.
-    *   Write a test to verify that the Daily Summary Snapshot is correctly displayed.
-    *   Write a test to verify that the Real-time TVL Gauge is correctly displayed.
-2.  **Implement `PerformancePage.jsx`:**
-    *   Implement the PnL Metrics.
-    *   Implement the Equity Curve.
-    *   Implement the Win/Loss Stats.
-    *   Implement the Trade Distribution.
-    *   Implement the Risk Metrics.
-    *   Implement the Capital Allocation View.
-    *   Implement the Daily Summary Snapshot.
-    *   Implement the Real-time TVL Gauge.
+1.  **Create Configuration Schema Validation:** Create a schema validation for the configuration file.
+2.  **Implement Hot-Reload Mechanism:** Implement a hot-reload mechanism for the configuration.
+3.  **Build Configuration Migration System:** Build a migration system for the configuration.
+4.  **Add Configuration Versioning:** Add versioning to the configuration.
+5.  **Create Validation Rules for Each Parameter:** Create validation rules for each parameter in the configuration.
+6.  **Implement Configuration Backup/Restore:** Implement a backup and restore functionality for the configuration.
+7.  **Add Configuration Diff Viewer in UI:** Add a diff viewer to the UI to show the changes between different versions of the configuration.
+8.  **Create Readonly Mode Enforcement:** Create a readonly mode enforcement for the configuration.
 
 **Acceptance Criteria:**
+*   The configuration management system is robust and flexible.
+*   The configuration can be easily updated and managed.
 
-*   All the required metrics and charts are displayed on the performance dashboard.
-*   The data displayed on the performance dashboard is accurate and up-to-date.
-
-### Phase 7: Security
+### Phase 4: Security
 
 **Description:**
-
-This phase will address the security requirements outlined in the SoW, ensuring that sensitive data is protected and that the application is not vulnerable to common attack vectors. This includes encrypting API keys, validating webhook signatures, and implementing role-based access control.
+This phase will address the security requirements outlined in the SoW, ensuring that sensitive data is protected and that the application is not vulnerable to common attack vectors.
 
 **Steps:**
-
-1.  **Write Unit Tests for `encryption_service.py`:**
-    *   Write a test to verify that API keys are correctly encrypted.
-    *   Write a test to verify that encrypted API keys can be correctly decrypted.
-2.  **Implement `encryption_service.py`:**
-    *   Implement the logic for encrypting and decrypting API keys using a strong encryption algorithm.
-3.  **Write Unit Tests for Webhook Validation:**
-    *   Write a test to verify that webhooks with a valid signature are accepted.
-    *   Write a test to verify that webhooks with an invalid signature are rejected.
-4.  **Implement Webhook Validation:**
-    *   Implement a middleware or dependency to validate webhook signatures using a shared secret.
-5.  **Write Unit Tests for Role-Based Access Control:**
-    *   Write a test to verify that users with the "admin" role can access admin-only routes.
-    *   Write a test to verify that users with the "trader" role cannot access admin-only routes.
-6.  **Implement Role-Based Access Control:**
-    *   Implement a dependency to enforce role-based access control on sensitive API endpoints.
+1.  **Implement Encryption of Secrets:** Implement encryption for all secrets, including API keys and passwords.
+2.  **Implement Webhook Signature Validation:** Implement webhook signature validation to prevent unauthorized access.
+3.  **Implement Role-Based Access Control:** Implement role-based access control to restrict access to sensitive data and functionality.
+4.  **Implement Secure Configuration File Handling:** Implement secure handling of the configuration file.
+5.  **Implement Audit Logging:** Implement audit logging for all sensitive operations.
+6.  **Prevent SQL Injection:** Implement measures to prevent SQL injection.
 
 **Acceptance Criteria:**
+*   All sensitive data is protected.
+*   The application is not vulnerable to common attack vectors.
 
-*   API keys are stored encrypted at rest.
-*   Webhooks are validated using a shared secret.
-*   Sensitive API endpoints are protected by role-based access control.
-
-### Phase 8: Error Handling & Recovery
+### Phase 5: Error Handling & Recovery
 
 **Description:**
-
-This phase will address the error handling and recovery requirements outlined in the SoW, ensuring that the application is robust and can handle unexpected errors gracefully. This includes handling exchange API failures, network issues, and database connection errors.
+This phase will address the error handling and recovery requirements outlined in the SoW, ensuring that the application is robust and can handle unexpected errors gracefully.
 
 **Steps:**
-
-1.  **Write Unit Tests for Exchange API Error Handling:**
-    *   Write a test to verify that the application handles `RateLimitExceeded` errors gracefully (e.g., by retrying the request after a delay).
-    *   Write a test to verify that the application handles `NetworkError` errors gracefully (e.g., by retrying the request after a delay).
-    *   Write a test to verify that the application handles other exchange-specific errors gracefully (e.g., by logging the error and queuing the signal).
-2.  **Implement Exchange API Error Handling:**
-    *   Implement retry logic and graceful failure handling in services like `order_service.py` and `precision_service.py`.
-3.  **Write Unit Tests for Database Connection Error Handling:**
-    *   Write a test to verify that the application handles database connection errors gracefully (e.g., by retrying the connection after a delay).
-4.  **Implement Database Connection Error Handling:**
-    *   Implement middleware or exception handlers in `main.py` to catch global exceptions and return appropriate HTTP responses.
-5.  **Write Unit Tests for Auto-Recovery:**
-    *   Write a test to verify that the application can recover its state on restart (e.g., by checking for pending orders or open positions and resuming monitoring).
-6.  **Implement Auto-Recovery:**
-    *   Implement the startup recovery logic.
+1.  **Implement Exchange-Specific Error Handling:** Implement handling for exchange-specific error codes.
+2.  **Implement Retry Strategy:** Implement a retry strategy for failed requests.
+3.  **Implement Circuit Breaker Pattern:** Implement a circuit breaker pattern to prevent cascading failures.
+4.  **Implement Graceful Degradation Plan:** Implement a graceful degradation plan for when the application is under heavy load.
 
 **Acceptance Criteria:**
+*   The application is robust and can handle unexpected errors gracefully.
+*   The application can recover from failures.
 
-*   The application handles exchange API errors and network issues without crashing.
-*   The application logs errors with sufficient detail for debugging.
-*   The application can recover its state on restart.
-
-### Phase 9: Deployment & Packaging
+### Phase 6: Deployment & Packaging
 
 **Description:**
-
 This phase will address the deployment and packaging requirements outlined in the SoW, ensuring that the final product is delivered as a self-contained web app with installation packages for Windows and macOS.
 
 **Steps:**
-
-1.  **Research and Choose a Packaging Tool:**
-    *   Research and choose a suitable packaging tool (e.g., PyInstaller, cx_Freeze).
-2.  **Create Build Scripts:**
-    *   Create build scripts for packaging the backend and frontend into a single executable.
-3.  **Test Packaged Application:**
-    *   Test the packaged application on target platforms (Windows, macOS).
-4.  **Create Installers:**
-    *   Create installers for each platform (e.g., using Inno Setup for Windows, `dmgbuild` for macOS).
+1.  **Create Build Scripts:** Create build scripts for packaging the backend and frontend into a single executable.
+2.  **Test Packaged Application:** Test the packaged application on target platforms (Windows, macOS).
+3.  **Create Installers:** Create installers for each platform.
+4.  **Implement Update/Rollback Mechanism:** Implement an update/rollback mechanism for the application.
+5.  **Set up Production Monitoring:** Set up a production monitoring system for the application.
 
 **Acceptance Criteria:**
+*   The application is easy to deploy and manage.
+*   The application can be updated and rolled back easily.
 
-*   A single executable file is created for Windows.
-*   A single application bundle is created for macOS.
-*   The packaged application runs correctly on a clean machine without requiring manual dependency installation.
-
-### Phase 10: Documentation
+### Phase 7: Documentation
 
 **Description:**
-
 This phase will address the documentation requirements outlined in the SoW, ensuring that the final product is delivered with full documentation for installation, configuration, and troubleshooting.
 
 **Steps:**
-
-1.  **Write Installation Guide:**
-    *   Write a detailed installation guide for the packaged application on Windows and macOS.
-2.  **Write Configuration Guide:**
-    *   Write a comprehensive configuration guide that explains every setting in the UI's Settings Panel.
-3.  **Write Troubleshooting Guide:**
-    *   Write a troubleshooting guide that covers common errors and their solutions.
-4.  **Update `README.md`:**
-    *   Update the `README.md` file for developers, ensuring that it is current and provides all the necessary information for setting up a development environment.
+1.  **Write Installation Guide:** Write a detailed installation guide for the packaged application on Windows and macOS.
+2.  **Write Configuration Guide:** Write a comprehensive configuration guide that explains every setting in the UI's Settings Panel.
+3.  **Write Troubleshooting Guide:** Write a troubleshooting guide that covers common errors and their solutions.
+4.  **Update `README.md`:** Update the `README.md` file for developers.
 
 **Acceptance Criteria:**
+*   The documentation is clear, comprehensive, and easy to understand.
 
-*   Clear and comprehensive documentation is provided for installation, configuration, and troubleshooting.
-*   The `README.md` is up-to-date for developers.
+---
+
+## 5. SoW Traceability Matrix
+
+| SoW Section | SoW Requirement | Execution Plan Phase |
+|-------------|----------------|---------------------|
+| 2.2 | First signal creates Position Group | Backend Phase 5 |
+| 2.2 | Pyramids don't create new positions | Backend Phase 6 |
+| 2.3 | DCA per-layer configuration | Backend Phase 5 |
+| 2.4 | Take-Profit Modes | Backend Phase 5 |
+| 2.5 | Exit Logic | Backend Phase 5 |
+| 3 | Precision Validation | Backend Phase 4 |
+| 4 | Risk Engine | Backend Phase 7 |
+| 5 | Execution Pool & Queue | Backend Phase 6 |
+| 7 | UI Requirements | Frontend Phases 1-3 |
+| 10 | Configuration | Cross-Cutting Phase 3 |
+| 11 | Logging, Security, Storage | Cross-Cutting Phases 2, 4 |
+| 13 | Deliverables | Cross-Cutting Phase 6, 7 |
