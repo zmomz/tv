@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api import auth, keys, webhooks, position_groups, logs
+from app.api import auth, keys, webhooks, position_groups, logs, config
 from app.db.session import engine
 from app.db.base import Base
 from app.core.config import settings
@@ -49,6 +49,7 @@ app.include_router(keys.router, prefix="/api/keys", tags=["keys"])
 app.include_router(webhooks.router, prefix="/api/webhook", tags=["webhook"])
 app.include_router(position_groups.router, prefix="/api/position-groups", tags=["position-groups"])
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+app.include_router(config.router, prefix="/api/config", tags=["config"])
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

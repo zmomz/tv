@@ -21,4 +21,5 @@ def test_pool_manager(mock_db_session):
     assert open_slots == 0
     assert can_open is False
 
-            assert open_slots == 0    assert can_open is False
+    assert open_slots == 0
+    assert can_open is False

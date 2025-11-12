@@ -8,9 +8,9 @@ This document outlines the development plan to upgrade the application to be ful
 
 ## 2. Current Application State
 
-The application's core backend business logic is now substantially complete. All major services, including the Precision & Validation Engine, Advanced Grid & Order Management, Execution Pool & Queue, and the Risk Engine, have been implemented and are covered by a strong suite of unit tests.
+The application's core backend business logic is now substantially complete and stable. All major services, as specified in Phases 0-4, have been implemented and are covered by a strong suite of both unit and integration tests.
 
-The project is now transitioning from pure unit-level development to a broader focus on integration and API-level testing. The immediate next step is to build a robust integration testing suite to verify that all services interact correctly with each other and the database. Following this, development will focus on building the API and UI layers as specified in the SoW.
+The successful completion of the integration testing phase (Phase 4.5) confirms that all backend services interact correctly with each other and the database. The backend is now considered a solid foundation for the development of the API and UI layers as specified in the SoW. The project is now actively moving into Phase 5.
 
 ---
 
@@ -53,71 +53,7 @@ Build the robust, pre-trade validation and precision adjustment service. This is
 - **`fetch_and_cache_precision_rules`:** Create a background task that periodically fetches tick size, step size, min quantity, and min notional value for all relevant symbols from the exchange and caches them (e.g., in Redis).
 - **`get_precision`:** A function that retrieves the precision rules for a given symbol from the cache.
 
-**Current Status Update (November 11, 2025):**
-- **Phase 1 Complete:** Unit tests for `precision_service.py` and `validation_service.py` are complete and passing.
-- **Phase 2 Complete:**
-    - Unit tests for `grid_calculator.py` are complete and passing.
-    - The blocker on `order_service.py` has been resolved, and its unit tests are now passing.
-    - The `take_profit_service.py` has been implemented with `Per-Leg`, `Aggregate`, and `Hybrid` modes, and its unit tests are passing.
-- **Phase 3 Complete:**
-    - The `pool_manager.py` has been implemented and its unit tests are passing.
-    - The `queue_service.py` has been implemented with `add_to_queue`, `handle_signal_replacement`, and `promote_from_queue`, and its unit tests are passing.
-- **Phase 4 Complete:**
-    - The `risk_engine.py` has been implemented with activation logic, position ranking, and mitigation execution. Its unit tests are passing.
 
----
-
-## Test Coverage Assessment (As of November 11, 2025)
-
-### Overall Assessment
-
-The project has a foundational `pytest` framework, but overall test coverage is still maturing. While unit test coverage for the core business logic implemented in Phases 1-3 is now strong, there remains a significant opportunity to improve integration and end-to-end testing. A number of legacy, non-pytest scripts still exist and should be migrated to the modern framework to ensure automated, reliable testing.
-
-### Detailed Breakdown
-
-**1. Standalone Test Scripts (Legacy):**
-
-*   `test_config.py`, `test_exchange.py`, `test_pool_manager.py`, `test_queue_manager.py`, `test_risk_engine.py`, `test_tp_manager.py`, `test_venv.py`, `test_webhook_client.py`
-*   **Assessment:** These are procedural scripts, not automated tests. They are not run as part of the CI/CD process and require manual execution and verification.
-*   **Verdict:** **Very Low Value.** These scripts should be migrated to the `pytest` framework to provide real, automated test coverage.
-
-**2. Pytest Framework (`/backend/tests`):**
-
-*   **`/backend/tests/unit`:**
-    *   `test_precision_service.py`: **Good Coverage.**
-    *   `test_validation_service.py`: **Good Coverage.**
-    *   `test_grid_calculator.py`: **Good Coverage.**
-    *   `test_order_service.py`: **Good Coverage.**
-    *   `test_take_profit_service.py`: **Good Coverage.**
-    *   `test_pool_manager.py`: **Good Coverage.**
-    *   `test_queue_service.py`: **Good Coverage.**
-    *   `test_risk_engine.py`: **In Progress.**
-    *   `test_auth_service.py`, `test_exchange_manager.py`: **Empty Files.** This is a major gap.
-*   **`/backend/tests/integration`:**
-    *   `test_api_endpoints.py`, `test_trading_flow.py`, `test_webhook_processing.py`: **Empty Files.** This indicates a complete lack of integration tests.
-*   **`conftest.py`:**
-    *   Contains useful fixtures, which is a good starting point.
-
-### Coverage vs. `upgrading_plan.md`
-
-| Phase | Feature | Test Coverage |
-| :--- | :--- | :--- |
-| **Phase 1: Precision & Validation** | `precision_service.py` | **Good** |
-| | `validation_service.py` | **Good** |
-| **Phase 2: Grid & Order Management** | `grid_calculator.py` | **Good** |
-| | `order_service.py` | **Good** |
-| | `take_profit_service.py` | **Good** |
-| **Phase 3: Execution Pool & Queue** | `pool_manager.py` | **Good** |
-| | `queue_service.py` | **Good** |
-| **Phase 4: The Risk Engine** | `risk_engine.py` | **Good** |
-| **Phase 5 & 6: UI & APIs** | API Endpoints | **None** |
-
-### Recommendations & Next Steps
-
-1.  **Continue TDD for New Features:** Continue the current Test-Driven Development approach for all new business logic, starting with the `risk_engine.py`.
-2.  **Prioritize Integration Tests:** Once the core backend logic is complete (post-Phase 4), the next highest priority is to implement integration tests. This will verify that the services work correctly together and with the database.
-3.  **Migrate Legacy Scripts:** As time permits, migrate the logic from the standalone test scripts into the `pytest` framework as proper unit and integration tests.
-4.  **Remove Redundant/Empty Files:** Legacy test scripts and empty test files will be removed as they are replaced with proper tests.
 
 ---
 
@@ -341,8 +277,8 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 3. Phase 2: ADVANCED GRID & ORDER MANAGEMENT - COMPLETED
 4. Phase 3: EXECUTION POOL & QUEUE - COMPLETED
 5. Phase 4: THE RISK ENGINE - COMPLETED
-6. Phase 4.5: INTEGRATION TESTING - IN PROGRESS
-7. Phase 5: CONFIGURATION MANAGEMENT & UI - PENDING
+6. Phase 4.5: INTEGRATION TESTING - COMPLETED
+7. Phase 5: CONFIGURATION MANAGEMENT & UI - IN PROGRESS
 8. Phase 6: COMPREHENSIVE UI & DASHBOARD - PENDING
 9. Phase 7: PERFORMANCE ANALYTICS & REPORTING - PENDING
 10. Phase 8: DEPLOYMENT & PACKAGING - PENDING
@@ -377,9 +313,8 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 - ✅ All risk actions are logged in `RiskAnalysis` table.
 
 ### Configuration Management & UI:
-- ✅ Backend API (`/api/config`) for GET/PUT configuration is implemented.
-- ✅ Frontend Settings Panel (SoW 7.2 F) allows full UI editing, validation, live preview, and "Apply & Restart Engine" functionality.
-- ✅ Configuration is stored in a local JSON file and synced in real-time.
+- ✅ `test_webhook_to_live_position` successfully verifies the entire backend flow from webhook ingestion to the creation of a `PositionGroup`.
+- ✅ `test_pool_full_queues_signal_and_promotes` successfully verifies that the queueing and promotion logic works as expected.
 
 ### Comprehensive UI & Dashboard:
 - ✅ Backend API endpoints provide real-time data for all UI screens (SoW 7.2 A-E).

@@ -36,3 +36,12 @@ export const admin = {
     return apiClient.get('/logs/system');
   },
 };
+
+export const config = {
+  getConfig() {
+    return apiClient.get('/config');
+  },
+  updateConfig(configData) {
+    return apiClient.put('/config', configData);
+  },
+};
