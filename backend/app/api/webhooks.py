@@ -49,7 +49,7 @@ async def receive_webhook(
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     # --- User and Exchange Config Lookup ---
-    user = db.get(User, user_id) # Use get() for primary key lookup
+    user = db.query(User).filter_by(id=user_id).first()
     if not user:
         await log_webhook(payload=payload, status="error", error_message=f"User not found: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")
@@ -88,7 +88,7 @@ async def receive_webhook(
                     print(f"Created new position group: {new_group.id}")
                     return {"status": "success", "message": "Position group created and pending execution", "group_id": new_group.id}
             else:
-                queued_signal = queue_manager.add_to_queue(processed_signal, user.id)
+                queued_signal = queue_manager.add_to_queue(WebhookPayload(**payload), user.id)
                 print(f"Added signal to queue: {queued_signal.id}")
                 return {"status": "success", "message": "Signal queued", "queued_signal_id": queued_signal.id}
 

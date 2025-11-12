@@ -100,7 +100,7 @@ Follow this checklist to diagnose common issues.
     - Verify that the `db` container is running: `docker compose ps`.
     - Ensure the `DATABASE_URL` in your `.env` file correctly points to the `db` service (e.g., `postgresql://tv_user:your_password@db:5432/tv_engine_db`).
 4.  **Webhook fails with 404 Not Found:**
-    - Double-check the endpoint URL. The correct format is `/api/webhook/{user_id}`.
+    - Double-check the endpoint URL. The correct format is `/api/webhook/webhook/{user_id}`.
     - Verify the `user_id` exists in the database.
 
 ## API Quick Reference
@@ -117,7 +117,7 @@ Follow this checklist to diagnose common issues.
   ```bash
   # Replace {user_id} with a valid user ID
   USER_ID="your-user-id-here"
-  curl -X POST -H "Content-Type: application/json" -d '{"secret": "test", "tv": {"symbol": "BTC/USDT", "exchange": "binance"}, "execution_intent": {"action": "buy", "amount": 0.001, "strategy": "grid"}}' "http://localhost:8000/api/webhook/$USER_ID"
+  curl -X POST -H "Content-Type: application/json" -d '{"secret": "test", "tv": {"symbol": "BTC/USDT", "exchange": "binance"}, "execution_intent": {"action": "buy", "amount": 0.001, "strategy": "grid"}}' "http://localhost:8000/api/webhook/webhook/$USER_ID"
   ```
 
 ## Development Conventions
@@ -171,209 +171,149 @@ Follow this checklist to diagnose common issues.
 *   **Component Composition:** Prefer using and composing the built-in MUI components (`<Button>`, `<TextField>`, `<Card>`, etc.) over creating custom-styled elements from scratch.
 *   **Styling:** For minor, one-off style adjustments, use the `sx` prop. For creating reusable, styled components, use the `styled()` utility.
 
-### Integration Testing (`pytest`)
-
-
-
-Integration tests are crucial for verifying that different parts of the application work together correctly. They are located in the `/backend/tests/integration` directory.
-
-
-
-#### Database Fixture Best Practices
-
-*   **Problem:** Integration tests fail with `relation "users" does not exist` or other database errors because the test database is not being created or the schema is not being applied correctly before the tests run.
-
-*   **Solution:** A robust, session-scoped `db_engine` fixture is the solution. It should:
-
-    1.  Connect to a default database (e.g., `postgres`) first.
-
-    2.  Create a dedicated test database (e.g., `tv_engine_db_test`).
-
-    3.  Connect to the new test database.
-
-    4.  **Crucially, use `Base.metadata.create_all(bind=engine)` to create all tables directly from the SQLAlchemy models.** This is more reliable for tests than running Alembic migrations.
-
-    5.  Yield the engine to the tests.
-
-    6.  In the teardown phase, call `Base.metadata.drop_all(bind=engine)` and then drop the entire test database to ensure a clean state for the next run.
-
-    7.  Handle database URL parsing carefully to isolate the database name for creation/deletion commands.
-
-
-
----
-
-
-
 ### FastAPI Integration Testing (`pytest`)
 
+This section outlines the definitive patterns for writing reliable integration tests for the FastAPI backend, covering both database setup and the critical challenge of database session management.
 
-
-This section outlines the critical patterns for writing reliable integration tests for the FastAPI backend, specifically addressing the challenges of database session management.
-
-
-
-#### The Core Problem: Transactional Session Isolation
-
-
+#### 1. The Core Problem: Transactional Session Isolation
 
 *   **Symptom:** Tests consistently fail with `404 Not Found` errors when an API endpoint tries to fetch data that was just created in the test function. Diagnostic logs show the data exists in the test's session but is `None` in the endpoint's session.
-
-*   **Root Cause:** The FastAPI `TestClient` runs the application in a separate thread. When a test creates data and a `TestClient` makes a request, they are operating in **different transactional scopes**, even if they originate from the same database connection. A `db.commit()` in the test will not make the data visible to the `TestClient`'s transaction.
-
-
-
-#### The Solution: The Shared Transaction Fixture
-
-
-
-The definitive solution is to ensure the entire test—from data setup to the API call and assertions—runs within a **single, shared database transaction**. This is achieved with a single, carefully constructed fixture.
-
-
-
-**`conftest.py` - The Correct Fixture Pattern:**
-
-
-
-```python
-
-@pytest.fixture(scope="function")
-
-def client(db_engine):
-
-    """
-
-    Creates a FastAPI TestClient that uses a single, shared transaction
-
-    for the entire test. The transaction is rolled back after the test is
-
-    finished, ensuring a clean state.
-
-
-
-    This fixture yields both the TestClient and the transactional session.
-
-    """
-
-    # 1. Establish a connection and begin a transaction
-
-    connection = db_engine.connect()
-
-    transaction = connection.begin()
-
-
-
-    # 2. Create a session bound to this transaction
-
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=connection)
-
-    session = SessionLocal()
-
-
-
-    # 3. Override the app's database dependency to use our transactional session
-
-    def override_get_db():
-
-        yield session
-
-
-
-    app.dependency_overrides[get_db] = override_get_db
-
-
-
-    # 4. Yield the client and session to the test
-
-    with TestClient(app) as test_client:
-
-        yield test_client, session
-
-
-
-    # 5. Teardown: clean up everything
-
-    app.dependency_overrides.clear()
-
-    session.close()
-
-    transaction.rollback()  # Roll back the transaction to isolate the test
-
-    connection.close()
-
-```
-
-
-
-#### Test Implementation Pattern
-
-
-
-Tests must use this fixture and follow a specific pattern for data creation.
-
-
-
-**`test_trading_flow.py` - The Correct Test Pattern:**
-
-
-
-```python
-
-def test_webhook_to_live_position(client): # Only the 'client' fixture is needed
-
-    """
-
-    Test the full trading flow from webhook ingestion to a live position.
-
-    """
-
-    # 1. Unpack the client and session from the fixture
-
-    test_client, db_session = client
-
-
-
-    # 2. Arrange: Create all test data using the provided db_session
-
-    user_in = UserCreate(...)
-
-    test_user = create_user(db_session, user_in)
-
-    
-
-    # 3. CRITICAL: Use flush() to persist data within the transaction
-
-    #    DO NOT use commit() here, as it would end the transaction.
-
-    db_session.flush()
-
-    db_session.refresh(test_user) # Refresh to get generated IDs, etc.
-
-
-
-    # ... create other necessary data (e.g., ExchangeConfig) and flush ...
-
-
-
-    # 4. Act: Make the API call using the TestClient
-
-    response = test_client.post(f"/api/webhook/{test_user.id}", json=payload)
-
-
-
-    # 5. Assert: Verify the response and the final database state
-
-    assert response.status_code == 200
-
-    
-
-    # The db_session is the same one used by the endpoint, so the state is consistent
-
-    position_group = db_session.query(PositionGroup).one_or_none()
-
-    assert position_group is not None
-
-```
+*   **Root Cause:** The FastAPI `TestClient` runs the application in a separate thread. When a test creates data and a `TestClient` makes a request, they are operating in **different transactional scopes**. A `db.commit()` in the test will not make the data visible to the `TestClient`'s transaction, and relying on separate `db.commit()` and cleanup steps is unreliable and prone to race conditions.
+
+#### 2. The Solution: A Unified, Transactional Fixture Set
+
+The definitive solution is a set of fixtures that work together to create a clean database for each test run and ensure the entire test—from data setup to the API call and assertions—runs within a **single, shared database transaction**.
+
+**Step 1: `db_engine` Fixture (Session-Scoped)**
+
+This fixture is responsible for the database itself. It runs only once per test session.
+
+*   **`conftest.py` - Database Engine Fixture:**
+    ```python
+    @pytest.fixture(scope="session")
+    def db_engine():
+        """
+        Creates a test database with a random name, creates all tables, and yields an engine to it.
+        """
+        db_name = f"test_db_{uuid.uuid4().hex}"
+        
+        # Connect to default postgres to create test database
+        default_db_url = str(settings.DATABASE_URL).replace(settings.DATABASE_URL.split("/")[-1], "postgres")
+        default_engine = create_engine(default_db_url, isolation_level="AUTOCOMMIT")
+        
+        with default_engine.connect() as conn:
+            conn.execute(text(f"CREATE DATABASE {db_name}"))
+        
+        # Now connect to the test database
+        engine = create_engine(str(settings.DATABASE_URL).replace(settings.DATABASE_URL.split("/")[-1], db_name))
+        
+        Base.metadata.create_all(bind=engine)
+
+        yield engine
+
+        # Teardown: drop all tables and the test database
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+        
+        with default_engine.connect() as conn:
+            # Terminate all connections to the test database
+            conn.execute(text(f"""
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = '{db_name}'
+                  AND pid <> pg_backend_pid();
+            """))
+            conn.execute(text(f"DROP DATABASE {db_name}"))
+        default_engine.dispose()
+    ```
+
+**Step 2: `client` Fixture (Function-Scoped)**
+
+This is the most critical fixture. It uses the `db_engine` and runs for every single test function, providing both the `TestClient` and a transactional `db_session`.
+
+*   **`conftest.py` - The Correct Transactional Client Fixture:**
+    ```python
+    @pytest.fixture(scope="function")
+    def client(db_engine):
+        """
+        Creates a FastAPI TestClient that uses a single, shared transaction
+        for the entire test. The transaction is rolled back after the test is
+        finished, ensuring a clean state.
+
+        This fixture yields both the TestClient and the transactional session.
+        """
+        # 1. Establish a connection and begin a transaction
+        connection = db_engine.connect()
+        transaction = connection.begin()
+
+        # 2. Create a session bound to this transaction
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=connection)
+        session = SessionLocal()
+
+        # 3. CRITICAL: Override the app's database dependency to use our transactional session
+        def override_get_db():
+            yield session
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        # 4. Yield the client and session to the test
+        with TestClient(app) as test_client:
+            yield test_client, session
+
+        # 5. Teardown: clean up everything
+        app.dependency_overrides.clear()
+        session.close()
+        transaction.rollback()  # Roll back the transaction to isolate the test
+        connection.close()
+    ```
+
+#### 3. Test Implementation Pattern
+
+Tests must use the `client` fixture and follow a specific pattern for data creation and API calls.
+
+*   **`test_trading_flow.py` - The Correct Test Pattern:**
+    ```python
+    from app.services.jwt_service import create_access_token # Don't forget this import
+
+    def test_webhook_to_live_position(client): # Only the 'client' fixture is needed
+        """
+        Test the full trading flow from webhook ingestion to a live position.
+        """
+        # 1. Unpack the client and session from the fixture
+        test_client, db_session = client
+
+        # 2. Arrange: Create all test data using the provided db_session
+        user_in = UserCreate(...)
+        test_user = create_user(db_session, user_in)
+        
+        # 3. CRITICAL: Use flush() to persist data within the transaction.
+        #    This makes the user object available in the database for the API
+        #    call to find. DO NOT use commit() here, as it would end the
+        #    transaction prematurely.
+        db_session.flush()
+        db_session.refresh(test_user) # Refresh to get DB-generated values like UUIDs
+
+        # ... create other necessary data (e.g., ExchangeConfig) and flush ...
+
+        # 4. Arrange: Prepare the API call (including authentication)
+        access_token = create_access_token(
+            user_id=test_user.id, email=test_user.email, role=test_user.role
+        )
+        headers = {"Authorization": f"Bearer {access_token}"}
+        payload = {...} # Your webhook payload
+        
+        # 5. Act: Make the API call using the TestClient
+        response = test_client.post(
+            f"/api/webhook/webhook/{test_user.id}", json=payload, headers=headers
+        )
+
+        # 6. Assert: Verify the response and the final database state
+        assert response.status_code == 200
+        
+        # The db_session is the same one used by the endpoint, so the state is consistent
+        position_group = db_session.query(PositionGroup).one_or_none()
+        assert position_group is not None
+    ```
 
 
 

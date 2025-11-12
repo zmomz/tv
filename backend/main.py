@@ -1,54 +1,62 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy.orm import Session
-from backend.app.api import webhooks, position_groups, auth, logs, keys
-from backend.app.db.session import get_db, init_db_session
-from backend.app.services.risk_engine import RiskEngine, get_risk_engine
-from backend.app.services.tp_manager import TPManager, get_tp_manager
-from backend.app.services.pool_manager import ExecutionPoolManager, get_pool_manager
-from backend.app.services.queue_manager import QueueManager, get_queue_manager
-from backend.app.tasks.log_cleanup import scheduler
-import asyncio
-import time
-import os
+import logging
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from app.api import auth, keys, webhooks, position_groups, logs
+from app.db.session import engine
+from app.db.base import Base
+from app.core.config import settings
+from app.middleware.auth_middleware import AuthMiddleware
 
-async def main_loop_task():
-    print("Starting main loop task...")
-    while True:
-        db_session = next(get_db())
-        try:
-            risk_engine = get_risk_engine(db_session)
-            tp_manager = get_tp_manager(db_session)
-            pool_manager = get_pool_manager(db_session)
-            queue_manager = get_queue_manager(db_session)
+# Setup logging
+logging.basicConfig(level=settings.APP_LOG_LEVEL.upper())
+logger = logging.getLogger(__name__)
 
-            print("Main loop running...")
-            # TODO: Implement main loop logic here
-            # 1. Check for new signals in the queue
-            # 2. Process signals (e.g., open new positions if slots available)
-            # 3. Check for TP hits
-            # 4. Run risk engine
-            
-        finally:
-            db_session.close()
-        
-        await asyncio.sleep(5) # Run every 5 seconds for now
+# Create all tables in the database
+Base.metadata.create_all(bind=engine)
 
-# Initialize database session and start background tasks on startup
-@app.on_event("startup")
-async def startup_event():
-    init_db_session()
-    scheduler.start()
-    if os.environ.get("TESTING") != "True":
-        asyncio.create_task(main_loop_task())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Application startup...")
+    from app.tasks.log_cleanup import scheduler
+    if not scheduler.running:
+        scheduler.start()
+    yield
+    # Shutdown
+    logger.info("Application shutdown...")
+    if scheduler.running:
+        scheduler.shutdown()
 
-app.include_router(webhooks.router, prefix="/api")
-app.include_router(position_groups.router, prefix="/api")
-app.include_router(auth.router, prefix="/api/auth")
-app.include_router(logs.router, prefix="/api/logs")
-app.include_router(keys.router, prefix="/api/keys")
+app = FastAPI(lifespan=lifespan)
 
-@app.get("/api/health")
-async def health_check():
-    return {"status": "ok"}
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(AuthMiddleware)
+
+# Routers
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(keys.router, prefix="/api/keys", tags=["keys"])
+app.include_router(webhooks.router, prefix="/api/webhook", tags=["webhook"])
+app.include_router(position_groups.router, prefix="/api/position-groups", tags=["position-groups"])
+app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
+
+@app.get("/")
+def read_root():
+    return {"message": "Trading Engine is running"}

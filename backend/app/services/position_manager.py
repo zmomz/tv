@@ -1,7 +1,7 @@
+from ..models.trading_models import PositionGroup, PositionGroupStatus, Pyramid, DCAOrder, PyramidStatus
 from typing import Dict, Any, List
-from sqlalchemy.orm import Session
-from ..models import trading_models as models
 from ..services.exchange_manager import ExchangeManager
+from sqlalchemy.orm import Session
 
 from decimal import Decimal
 
@@ -10,21 +10,21 @@ class PositionGroupManager:
         self.db = db
         self.exchange_manager = exchange_manager
 
-    async def create_group(self, signal: Dict[str, Any], user_id: int, exchange_config_id: int) -> models.PositionGroup:
+    async def create_group(self, signal: Dict[str, Any], user_id: int, exchange_config_id: int) -> PositionGroup:
         """Create new Position Group from signal and place initial order."""
         tv_data = signal['original_payload']['tv']
         
-        new_group = models.PositionGroup(
+        new_group = PositionGroup(
             user_id=user_id,
             exchange_config_id=exchange_config_id,
-            exchange=tv_data['exchange'],
-            symbol=tv_data['symbol'],
-            timeframe=tv_data.get('timeframe', '1m'),
-            status="waiting",  # Start as waiting
-            entry_signal=signal
+            exchange=signal['exchange'],
+            symbol=signal['original_payload']['tv']['symbol'],
+            timeframe=signal['original_payload']['tv']['timeframe'],
+            status=PositionGroupStatus.open,
+            entry_signal=signal,
         )
         self.db.add(new_group)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(new_group)
 
         # Create the first pyramid entry
@@ -35,7 +35,7 @@ class PositionGroupManager:
 
         return new_group
 
-    async def place_initial_order(self, group: models.PositionGroup, pyramid: models.Pyramid, signal: Dict[str, Any]):
+    async def place_initial_order(self, group: PositionGroup, pyramid: Pyramid, signal: Dict[str, Any]):
         """Places the very first order for a new position group."""
         intent = signal['original_payload']['execution_intent']
         symbol = group.symbol
@@ -51,9 +51,9 @@ class PositionGroupManager:
             )
             
             # Order placed successfully, update status
-            group.status = "live"
-            pyramid.status = "active"
-            self.db.commit()
+            group.status = PositionGroupStatus.open
+            pyramid.status = PyramidStatus.open
+            self.db.flush()
             
             # TODO: Store the order details in the database
             print(f"Successfully placed initial order for group {group.id}: {order}")
@@ -62,30 +62,30 @@ class PositionGroupManager:
             # If order fails, mark the group as failed
             group.status = "failed"
             pyramid.status = "failed"
-            self.db.commit()
+            self.db.flush()
             print(f"Failed to place initial order for group {group.id}: {e}")
             # Re-raise the exception to be caught by the webhook endpoint
             raise
 
-    def add_pyramid(self, group_id: int, signal: Dict[str, Any]) -> models.Pyramid:
+    def add_pyramid(self, group_id: int, signal: Dict[str, Any]) -> Pyramid:
         """Add pyramid to existing group"""
-        new_pyramid = models.Pyramid(
+        new_pyramid = Pyramid(
             position_group_id=group_id,
             pyramid_level=1,
             status="pending"
         )
         self.db.add(new_pyramid)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(new_pyramid)
 
         return new_pyramid
 
-    def calculate_dca_orders(self, pyramid: models.Pyramid, config: Dict[str, Any]) -> List[models.DCAOrder]:
+    def calculate_dca_orders(self, pyramid: Pyramid, config: Dict[str, Any]) -> List[DCAOrder]:
         """Generate DCA orders based on grid config"""
         # TODO: Implement DCA calculation logic
         pass
 
-    def place_pyramid_orders(self, pyramid: models.Pyramid):
+    def place_pyramid_orders(self, pyramid: Pyramid):
         """Submit entry + all DCA orders"""
         # TODO: Implement order placement logic
         pass

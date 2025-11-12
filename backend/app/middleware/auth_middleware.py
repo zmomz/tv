@@ -1,66 +1,37 @@
-from functools import wraps
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from ..services import jwt_service
-from ..models.user_models import User
-from ..db.session import get_db
-from sqlalchemy.orm import Session
-from uuid import UUID
+from fastapi import Request, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.jwt_service import verify_token
+from app.schemas.auth_schemas import UserOut
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/api/auth"):
+            response = await call_next(request)
+            return response
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> UUID:
-    try:
-        payload = jwt_service.verify_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return UUID(user_id)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return JSONResponse(status_code=401, content={"detail": "Authorization header missing"})
 
-def require_authenticated(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        # This decorator is now simpler, as the dependency injection
-        # handles the token verification.
-        return await func(*args, **kwargs)
-    return wrapper
+        try:
+            scheme, token = auth_header.split()
+            if scheme.lower() != "bearer":
+                raise ValueError("Invalid authentication scheme")
+            
+            payload = verify_token(token)
+            request.state.user = payload
+        except Exception as e:
+            return JSONResponse(status_code=401, content={"detail": str(e)})
 
-def require_role(role: str):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            token = kwargs.get("token")
-            db = kwargs.get("db")
-            if not token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            try:
-                payload = jwt_service.verify_token(token)
-                user_role = payload.get("role")
-                if user_role not in [role, "manager", "admin"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Not enough permissions",
-                    )
-                return await func(*args, **kwargs)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=str(e),
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-        return wrapper
-    return decorator
+        response = await call_next(request)
+        return response
+
+def get_current_user(request: Request) -> UserOut:
+    user = request.state.user
+    return UserOut(**user)
+
+async def require_authenticated(request: Request) -> UserOut:
+    if not hasattr(request.state, "user") or not request.state.user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return get_current_user(request)
