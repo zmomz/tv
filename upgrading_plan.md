@@ -336,7 +336,7 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 - ✅ Backend API endpoints provide real-time data for all UI screens (SoW 7.2 A-E).
 - 🟡 **Live Dashboard (SoW 7.2.A):** Implemented.
 - 🟡 **Positions & Pyramids View (SoW 7.2.B):** Main table implemented. Expandable DCA view is pending.
-- ❌ **Risk Engine Panel (SoW 7.2.C):** Not implemented.
+- ✅ **Risk Engine Panel (SoW 7.2.C):** Implemented.
 - ❌ **Waiting Queue View (SoW 7.2.D):** Not implemented.
 - ❌ **Advanced Log Viewer (SoW 7.2.E):** Not implemented.
 
