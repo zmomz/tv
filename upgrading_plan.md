@@ -294,7 +294,7 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 5. Phase 4: THE RISK ENGINE - COMPLETED
 6. Phase 4.5: INTEGRATION TESTING - COMPLETED
 7. Phase 5: CONFIGURATION MANAGEMENT & UI - BACKEND COMPLETE, FRONTEND PENDING VERIFICATION
-8. Phase 6: COMPREHENSIVE UI & DASHBOARD - COMPLETED
+8. Phase 6: COMPREHENSIVE UI & DASHBOARD - IN PROGRESS
 9. Phase 7: PERFORMANCE ANALYTICS & REPORTING - PENDING
 10. Phase 8: DEPLOYMENT & PACKAGING - PENDING
 
@@ -334,7 +334,11 @@ This rewritten plan is a high-fidelity blueprint of the client's request. It is 
 
 ### Comprehensive UI & Dashboard:
 - ✅ Backend API endpoints provide real-time data for all UI screens (SoW 7.2 A-E).
-- 🟡 Frontend components for Live Dashboard, Positions & Pyramids, Risk Engine Panel, Waiting Queue, and Advanced Log Viewer are built, but require visual verification.
+- 🟡 **Live Dashboard (SoW 7.2.A):** Implemented.
+- 🟡 **Positions & Pyramids View (SoW 7.2.B):** Main table implemented. Expandable DCA view is pending.
+- ❌ **Risk Engine Panel (SoW 7.2.C):** Not implemented.
+- ❌ **Waiting Queue View (SoW 7.2.D):** Not implemented.
+- ❌ **Advanced Log Viewer (SoW 7.2.E):** Not implemented.
 
 ### Performance Analytics & Reporting:
 - ✅ `aggregate_trade_data` background task populates `TradeAnalytics` table with SoW-specified metrics.

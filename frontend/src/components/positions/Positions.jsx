@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress } from '@mui/material';
+import PositionRow from './PositionRow';
 
 const Positions = ({ positions }) => {
   if (!positions) {
@@ -13,7 +14,7 @@ const Positions = ({ positions }) => {
 
   if (positions.length === 0) {
     return (
-      <Box sx={{ mt: 4 }}>
+      <Box sx={{ mt: 4, p: 3 }}>
         <Typography variant="h6">No positions to display.</Typography>
       </Box>
     );
@@ -28,6 +29,7 @@ const Positions = ({ positions }) => {
         <Table sx={{ minWidth: 650 }} aria-label="positions table">
           <TableHead>
             <TableRow>
+              <TableCell />
               <TableCell>Symbol</TableCell>
               <TableCell align="right">Status</TableCell>
               <TableCell align="right">Entry Price</TableCell>
@@ -37,18 +39,7 @@ const Positions = ({ positions }) => {
           </TableHead>
           <TableBody>
             {positions.map((position) => (
-              <TableRow
-                key={position.id}
-                sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-              >
-                <TableCell component="th" scope="row">
-                  {position.symbol}
-                </TableCell>
-                <TableCell align="right">{position.status}</TableCell>
-                <TableCell align="right">{position.entry_price}</TableCell>
-                <TableCell align="right">{position.current_price}</TableCell>
-                <TableCell align="right">{position.pnl}</TableCell>
-              </TableRow>
+              <PositionRow key={position.id} row={position} />
             ))}
           </TableBody>
         </Table>
