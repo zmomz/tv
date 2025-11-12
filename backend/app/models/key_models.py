@@ -1,20 +1,27 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Boolean, Text
+from sqlalchemy import Column, String, Boolean, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from ..db.base import Base
-import sqlalchemy as sa
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    key_hash = Column(String, nullable=False)
+    label = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    last_used_at = Column(DateTime)
 
 class ExchangeConfig(Base):
     __tablename__ = "exchange_configs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()"))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    exchange_name = Column(String(50), nullable=False)
-    mode = Column(Enum('testnet', 'live', name='exchange_mode'), nullable=False)
-    api_key_encrypted = Column(Text, nullable=False)
-    api_secret_encrypted = Column(Text, nullable=False)
-    is_enabled = Column(Boolean, default=False, nullable=False)
-    is_validated = Column(Boolean, default=False, nullable=False)
-    last_validated = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    exchange_name = Column(String, nullable=False)
+    api_key = Column(String, nullable=False)
+    secret_key = Column(String, nullable=False)
+    is_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

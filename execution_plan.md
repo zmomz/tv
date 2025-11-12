@@ -920,7 +920,7 @@ EXCHANGE_TYPE=mock
 Design and implement the complete database schema, migrations, and data access layer.
 
 #### Steps
-1.  **Implement Models:** Translate the data models from Section 3 into SQLAlchemy code.
+1.  **Implement Models (TDD):** For each model, first write a test that tries to create and save it, then implement the model to make the test pass. (✅ User model implemented)
 2.  **Generate Initial Migration:** Run `alembic revision --autogenerate -m "initial_schema"`. Manually review and refine the generated script.
 3.  **Create Repository Pattern:** Implement a `BaseRepository` and specific repositories (e.g., `PositionGroupRepository`) for all major models.
 4.  **Configure Connection Pooling:** Set up the SQLAlchemy engine with `pool_size=20`, `max_overflow=10`.

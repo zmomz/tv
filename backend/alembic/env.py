@@ -20,13 +20,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import your models here to ensure they are registered with SQLAlchemy Base.metadata
-from backend.app.db.base import Base
-from backend.app.models import models
-from backend.app.models import user_models
-from backend.app.models import log_models
-from backend.app.models import key_models
-from backend.app.models import trading_models
-from backend.app.models import risk_analytics_models
+from backend.app.db import Base
 
 target_metadata = Base.metadata
 
