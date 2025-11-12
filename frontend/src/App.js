@@ -1,60 +1,76 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Dashboard from './components/dashboard/Dashboard';
+import Positions from './components/positions/Positions';
+import { auth, api } from './services/api';
 
 function App() {
-  const [message, setMessage] = useState('');
-  const [backendStatus, setBackendStatus] = useState('');
-  const [positionGroups, setPositionGroups] = useState([]);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [positions, setPositions] = useState([]);
+  const [health, setHealth] = useState(null);
 
   useEffect(() => {
-    setMessage('Hello from React!');
+    const fetchData = async () => {
+      if (token) {
+        try {
+          const [positionsResponse, healthResponse] = await Promise.all([
+            api.get('/positions'),
+            api.get('/health'),
+          ]);
+          setPositions(positionsResponse.data);
+          setHealth(healthResponse.data);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    };
 
-    // Fetch backend status
-    fetch('/api/health')
-      .then(response => response.json())
-      .then(data => setBackendStatus(data.status))
-      .catch(error => {
-        console.error('Error fetching backend status:', error);
-        setBackendStatus('Backend unreachable');
-      });
+    fetchData();
+  }, [token]);
 
-    // Fetch position groups
-    fetch('/api/position_groups')
-      .then(response => response.json())
-      .then(data => setPositionGroups(data))
-      .catch(error => {
-        console.error('Error fetching position groups:', error);
-      });
-  }, []);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await auth.login(email, password);
+      localStorage.setItem('token', response.data.access_token);
+      setToken(response.data.access_token);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  if (!token) {
+    return (
+      <div className="App">
+        <h1>Login</h1>
+        <form onSubmit={handleLogin}>
+          <label>
+            Email:
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            Password:
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          <button type="submit">Login</button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="App">
-      <header className="App-header">
-        <p>{message}</p>
-        <p>Backend Status: {backendStatus}</p>
-      </header>
-      <main>
-        <h2>Position Groups</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Pair</th>
-              <th>Status</th>
-              <th>Unrealized PnL (%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {positionGroups.map(group => (
-              <tr key={group.id}>
-                <td>{group.id}</td>
-                <td>{group.pair}</td>
-                <td>{group.status}</td>
-                <td>{group.unrealized_pnl_percent}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </main>
+      <Dashboard health={health} />
+      <Positions positions={positions} />
     </div>
   );
 }

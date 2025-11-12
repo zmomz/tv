@@ -7,6 +7,19 @@ const apiClient = axios.create({
   },
 });
 
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export const auth = {
   login(email, password) {
     return apiClient.post('/auth/login', { email, password });
@@ -44,4 +57,10 @@ export const config = {
   updateConfig(configData) {
     return apiClient.put('/config', configData);
   },
+};
+
+export const api = {
+  get: (url) => apiClient.get(url),
+  post: (url, data) => apiClient.post(url, data),
+  put: (url, data) => apiClient.put(url, data),
 };

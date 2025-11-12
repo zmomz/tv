@@ -8,6 +8,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - PYTHONPATH=/code/backend
       - TESTING=True
     depends_on:
       - db
