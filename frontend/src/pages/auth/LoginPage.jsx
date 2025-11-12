@@ -1,13 +1,28 @@
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Container } from '@mui/material';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { TextField, Button, Box, Typography, Container, Link, Alert } from '@mui/material';
+import { useAuth } from '../../hooks/useAuth';
 
-const Login = ({ onLogin }) => {
+const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    onLogin(email, password);
+    setError('');
+    if (!email || !password) {
+      setError('Both email and password are required.');
+      return;
+    }
+    try {
+      await login(email, password);
+      navigate('/');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to log in. Please check your credentials.');
+    }
   };
 
   return (
@@ -24,6 +39,7 @@ const Login = ({ onLogin }) => {
           Login
         </Typography>
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+          {error && <Alert severity="error" sx={{ width: '100%', mb: 2 }}>{error}</Alert>}
           <TextField
             margin="normal"
             required
@@ -56,10 +72,13 @@ const Login = ({ onLogin }) => {
           >
             Login
           </Button>
+          <Link component={RouterLink} to="/register" variant="body2">
+            {"Don't have an account? Sign Up"}
+          </Link>
         </Box>
       </Box>
     </Container>
   );
 };
 
-export default Login;
+export default LoginPage;

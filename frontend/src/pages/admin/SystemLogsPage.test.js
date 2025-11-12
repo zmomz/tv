@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import SystemLogs from './SystemLogs';
+import SystemLogsPage from '../../pages/admin/SystemLogsPage';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from '../../theme/theme';
 import { api } from '../../services/api';
@@ -12,7 +12,7 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
-describe('SystemLogs Component', () => {
+describe('SystemLogsPage Component', () => {
   const mockLogs = [
     {
       id: '1',
@@ -41,25 +41,26 @@ describe('SystemLogs Component', () => {
     api.get.mockClear();
   });
 
+  const renderWithProviders = () => {
+    return render(
+      <ThemeProvider theme={theme}>
+        <SystemLogsPage />
+      </ThemeProvider>
+    );
+  };
+
   test('renders loading state initially', () => {
     api.get.mockReturnValueOnce(new Promise(() => {})); // Never resolve to keep it in loading state
 
-    render(
-      <ThemeProvider theme={theme}>
-        <SystemLogs />
-      </ThemeProvider>
-    );
+    renderWithProviders();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.getByText(/loading logs.../i)).toBeInTheDocument();
   });
 
   test('renders logs in a table after loading', async () => {
     api.get.mockResolvedValueOnce({ data: mockLogs });
 
-    render(
-      <ThemeProvider theme={theme}>
-        <SystemLogs />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText('Timestamp')).toBeInTheDocument();
@@ -88,11 +89,7 @@ describe('SystemLogs Component', () => {
   test('renders no logs message if array is empty', async () => {
     api.get.mockResolvedValueOnce({ data: [] });
 
-    render(
-      <ThemeProvider theme={theme}>
-        <SystemLogs />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText(/no system logs to display/i)).toBeInTheDocument();
@@ -104,11 +101,7 @@ describe('SystemLogs Component', () => {
     const errorMessage = 'Failed to fetch logs';
     api.get.mockRejectedValueOnce(new Error(errorMessage));
 
-    render(
-      <ThemeProvider theme={theme}>
-        <SystemLogs />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText(`Error: ${errorMessage}`)).toBeInTheDocument();

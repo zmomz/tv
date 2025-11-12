@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import Performance from './Performance';
+import PerformancePage from '../../pages/dashboard/PerformancePage';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from '../../theme/theme';
 import { api } from '../../services/api';
@@ -12,7 +12,7 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
-describe('Performance Component', () => {
+describe('PerformancePage Component', () => {
   const mockAnalytics = {
     total_pnl: 1500.75,
     total_roi: 15.25,
@@ -29,23 +29,24 @@ describe('Performance Component', () => {
     api.get.mockResolvedValue({ data: mockAnalytics });
   });
 
+  const renderWithProviders = () => {
+    return render(
+      <ThemeProvider theme={theme}>
+        <PerformancePage />
+      </ThemeProvider>
+    );
+  };
+
   test('renders loading state initially', () => {
     api.get.mockReturnValueOnce(new Promise(() => {})); // Never resolve to keep it in loading state
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Performance />
-      </ThemeProvider>
-    );
+    renderWithProviders();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.getByText(/loading performance data.../i)).toBeInTheDocument();
   });
 
   test('renders performance metrics after loading', async () => {
-    render(
-      <ThemeProvider theme={theme}>
-        <Performance />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText('Total PnL')).toBeInTheDocument();
@@ -68,11 +69,7 @@ describe('Performance Component', () => {
     const errorMessage = 'Failed to fetch analytics';
     api.get.mockRejectedValueOnce(new Error(errorMessage));
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Performance />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText(`Error: ${errorMessage}`)).toBeInTheDocument();
@@ -83,11 +80,7 @@ describe('Performance Component', () => {
   test('renders N/A for missing data', async () => {
     api.get.mockResolvedValueOnce({ data: {} }); // Empty data
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Performance />
-      </ThemeProvider>
-    );
+    renderWithProviders();
 
     await waitFor(() => {
       expect(screen.getByText('Total PnL')).toBeInTheDocument();

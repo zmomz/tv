@@ -59,6 +59,12 @@ export const config = {
   },
 };
 
+export const analytics = {
+  getAnalytics() {
+    return apiClient.get('/analytics');
+  },
+};
+
 export const api = {
   get: (url) => apiClient.get(url),
   post: (url, data) => apiClient.post(url, data),

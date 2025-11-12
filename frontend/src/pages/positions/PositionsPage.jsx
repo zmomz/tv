@@ -1,13 +1,41 @@
-import React from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress } from '@mui/material';
-import PositionRow from './PositionRow';
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Alert } from '@mui/material';
+import PositionRow from '../../components/positions/PositionRow';
+import { api } from '../../services/api';
 
-const Positions = ({ positions }) => {
-  if (!positions) {
+const PositionsPage = () => {
+  const [positions, setPositions] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchPositions = async () => {
+      try {
+        const response = await api.get('/positions');
+        setPositions(response.data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPositions();
+  }, []);
+
+  if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
         <CircularProgress />
-        <Typography variant="h6" sx={{ ml: 2 }}>Loading...</Typography>
+        <Typography variant="h6" sx={{ ml: 2 }}>Loading positions...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ mt: 4 }}>
+        <Alert severity="error">Error: {error}</Alert>
       </Box>
     );
   }
@@ -48,4 +76,4 @@ const Positions = ({ positions }) => {
   );
 };
 
-export default Positions;
+export default PositionsPage;

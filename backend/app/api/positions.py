@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..db.session import get_db
+from ..models.trading_models import PositionGroup
 from ..schemas.trading_schemas import PositionGroupOut
 from ..services.position_manager import PositionGroupManager
 from typing import List

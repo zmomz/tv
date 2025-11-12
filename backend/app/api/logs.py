@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..db.session import get_db
 from ..models.log_models import SystemLog, AuditLog
@@ -9,6 +9,13 @@ from ..dependencies import require_role
 from ..models.user_models import User
 
 router = APIRouter()
+
+@router.get("")
+async def redirect_to_system_logs():
+    """
+    Redirects to system logs.
+    """
+    raise HTTPException(status_code=307, detail="Redirecting to /api/logs/system", headers={"Location": "/api/logs/system"})
 
 @router.get("/system", response_model=List[SystemLogOut])
 def get_system_logs(

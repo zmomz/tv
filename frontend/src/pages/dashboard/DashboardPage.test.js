@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import Dashboard from './Dashboard';
+import DashboardPage from '../../pages/dashboard/DashboardPage';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from '../../theme/theme';
 import { api } from '../../services/api';
@@ -13,7 +13,7 @@ jest.mock('../../services/api', () => ({
   },
 }));
 
-describe('Dashboard Component', () => {
+describe('DashboardPage Component', () => {
   const mockHealth = { status: 'ok', database: 'connected', redis: 'connected' };
   const mockStats = {
     open_positions: 5,
@@ -26,25 +26,26 @@ describe('Dashboard Component', () => {
     api.get.mockClear();
   });
 
+  const renderWithProviders = (healthProps) => {
+    return render(
+      <ThemeProvider theme={theme}>
+        <DashboardPage health={healthProps} />
+      </ThemeProvider>
+    );
+  };
+
   test('renders loading state initially', () => {
     api.get.mockReturnValueOnce(new Promise(() => {})); // Never resolve to keep it in loading state
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Dashboard health={mockHealth} />
-      </ThemeProvider>
-    );
+    renderWithProviders(mockHealth);
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.getByText(/loading.../i)).toBeInTheDocument();
   });
 
   test('renders dashboard statistics after loading', async () => {
     api.get.mockResolvedValueOnce({ data: mockStats });
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Dashboard health={mockHealth} />
-      </ThemeProvider>
-    );
+    renderWithProviders(mockHealth);
 
     await waitFor(() => {
       expect(screen.getByText('Open Positions')).toBeInTheDocument();
@@ -61,11 +62,7 @@ describe('Dashboard Component', () => {
     const errorMessage = 'Failed to fetch dashboard stats';
     api.get.mockRejectedValueOnce(new Error(errorMessage));
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Dashboard health={mockHealth} />
-      </ThemeProvider>
-    );
+    renderWithProviders(mockHealth);
 
     await waitFor(() => {
       expect(screen.getByText(`Error: ${errorMessage}`)).toBeInTheDocument();
@@ -76,11 +73,7 @@ describe('Dashboard Component', () => {
   test('renders system health information', async () => {
     api.get.mockResolvedValueOnce({ data: mockStats });
 
-    render(
-      <ThemeProvider theme={theme}>
-        <Dashboard health={mockHealth} />
-      </ThemeProvider>
-    );
+    renderWithProviders(mockHealth);
 
     await waitFor(() => {
       expect(screen.getByText(`Database: ${mockHealth.database}`)).toBeInTheDocument();

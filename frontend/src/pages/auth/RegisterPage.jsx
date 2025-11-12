@@ -1,14 +1,29 @@
 import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Container } from '@mui/material';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { TextField, Button, Box, Typography, Container, Link, Alert } from '@mui/material';
+import { useAuth } from '../../hooks/useAuth';
 
-const Register = ({ onRegister }) => {
+const RegisterPage = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const { register } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    onRegister(username, email, password);
+    setError('');
+    if (!username || !email || !password) {
+      setError('All fields are required.');
+      return;
+    }
+    try {
+      await register(username, email, password);
+      navigate('/');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to register. Please try again.');
+    }
   };
 
   return (
@@ -25,6 +40,7 @@ const Register = ({ onRegister }) => {
           Register
         </Typography>
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+          {error && <Alert severity="error" sx={{ width: '100%', mb: 2 }}>{error}</Alert>}
           <TextField
             margin="normal"
             required
@@ -68,10 +84,13 @@ const Register = ({ onRegister }) => {
           >
             Register
           </Button>
+          <Link component={RouterLink} to="/login" variant="body2">
+            {"Already have an account? Sign In"}
+          </Link>
         </Box>
       </Box>
     </Container>
   );
 };
 
-export default Register;
+export default RegisterPage;

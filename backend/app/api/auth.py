@@ -27,9 +27,13 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         password_hash=hashed_password,
         role=user.role,
     )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    try:
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already exists")
     
     access_token = jwt_service.create_access_token(
         user_id=db_user.id, email=db_user.email, role=db_user.role

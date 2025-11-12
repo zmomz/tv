@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import { api } from '../../services/api';
 
-const Performance = () => {
+const PerformancePage = () => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -53,7 +53,7 @@ const Performance = () => {
       </Typography>
 
       <Grid container spacing={3} sx={{ mt: 3 }}>
-        <Grid item xs={12} md={4}>
+        <Grid xs={12} md={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="h6">Total PnL</Typography>
             <Typography variant="h3" color={analytics.total_pnl >= 0 ? 'success.main' : 'error.main'}>
@@ -61,7 +61,7 @@ const Performance = () => {
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid xs={12} md={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="h6">Total ROI</Typography>
             <Typography variant="h3" color={analytics.total_roi >= 0 ? 'success.main' : 'error.main'}>
@@ -69,7 +69,7 @@ const Performance = () => {
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid xs={12} md={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="h6">Win Rate</Typography>
             <Typography variant="h3">
@@ -77,7 +77,7 @@ const Performance = () => {
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>Equity Curve</Typography>
             {/* Placeholder for a chart component */}
@@ -86,7 +86,7 @@ const Performance = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>Key Stats</Typography>
             <Typography>Total Trades: {analytics.total_trades || 'N/A'}</Typography>
@@ -100,4 +100,4 @@ const Performance = () => {
   );
 };
 
-export default Performance;
+export default PerformancePage;
