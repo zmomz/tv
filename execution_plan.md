@@ -329,3 +329,107 @@ The performance dashboard is a valuable tool for analyzing trading performance. 
 
 *   All the required metrics and charts are displayed on the performance dashboard.
 *   The data displayed on the performance dashboard is accurate and up-to-date.
+
+### Phase 7: Security
+
+**Description:**
+
+This phase will address the security requirements outlined in the SoW, ensuring that sensitive data is protected and that the application is not vulnerable to common attack vectors. This includes encrypting API keys, validating webhook signatures, and implementing role-based access control.
+
+**Steps:**
+
+1.  **Write Unit Tests for `encryption_service.py`:**
+    *   Write a test to verify that API keys are correctly encrypted.
+    *   Write a test to verify that encrypted API keys can be correctly decrypted.
+2.  **Implement `encryption_service.py`:**
+    *   Implement the logic for encrypting and decrypting API keys using a strong encryption algorithm.
+3.  **Write Unit Tests for Webhook Validation:**
+    *   Write a test to verify that webhooks with a valid signature are accepted.
+    *   Write a test to verify that webhooks with an invalid signature are rejected.
+4.  **Implement Webhook Validation:**
+    *   Implement a middleware or dependency to validate webhook signatures using a shared secret.
+5.  **Write Unit Tests for Role-Based Access Control:**
+    *   Write a test to verify that users with the "admin" role can access admin-only routes.
+    *   Write a test to verify that users with the "trader" role cannot access admin-only routes.
+6.  **Implement Role-Based Access Control:**
+    *   Implement a dependency to enforce role-based access control on sensitive API endpoints.
+
+**Acceptance Criteria:**
+
+*   API keys are stored encrypted at rest.
+*   Webhooks are validated using a shared secret.
+*   Sensitive API endpoints are protected by role-based access control.
+
+### Phase 8: Error Handling & Recovery
+
+**Description:**
+
+This phase will address the error handling and recovery requirements outlined in the SoW, ensuring that the application is robust and can handle unexpected errors gracefully. This includes handling exchange API failures, network issues, and database connection errors.
+
+**Steps:**
+
+1.  **Write Unit Tests for Exchange API Error Handling:**
+    *   Write a test to verify that the application handles `RateLimitExceeded` errors gracefully (e.g., by retrying the request after a delay).
+    *   Write a test to verify that the application handles `NetworkError` errors gracefully (e.g., by retrying the request after a delay).
+    *   Write a test to verify that the application handles other exchange-specific errors gracefully (e.g., by logging the error and queuing the signal).
+2.  **Implement Exchange API Error Handling:**
+    *   Implement retry logic and graceful failure handling in services like `order_service.py` and `precision_service.py`.
+3.  **Write Unit Tests for Database Connection Error Handling:**
+    *   Write a test to verify that the application handles database connection errors gracefully (e.g., by retrying the connection after a delay).
+4.  **Implement Database Connection Error Handling:**
+    *   Implement middleware or exception handlers in `main.py` to catch global exceptions and return appropriate HTTP responses.
+5.  **Write Unit Tests for Auto-Recovery:**
+    *   Write a test to verify that the application can recover its state on restart (e.g., by checking for pending orders or open positions and resuming monitoring).
+6.  **Implement Auto-Recovery:**
+    *   Implement the startup recovery logic.
+
+**Acceptance Criteria:**
+
+*   The application handles exchange API errors and network issues without crashing.
+*   The application logs errors with sufficient detail for debugging.
+*   The application can recover its state on restart.
+
+### Phase 9: Deployment & Packaging
+
+**Description:**
+
+This phase will address the deployment and packaging requirements outlined in the SoW, ensuring that the final product is delivered as a self-contained web app with installation packages for Windows and macOS.
+
+**Steps:**
+
+1.  **Research and Choose a Packaging Tool:**
+    *   Research and choose a suitable packaging tool (e.g., PyInstaller, cx_Freeze).
+2.  **Create Build Scripts:**
+    *   Create build scripts for packaging the backend and frontend into a single executable.
+3.  **Test Packaged Application:**
+    *   Test the packaged application on target platforms (Windows, macOS).
+4.  **Create Installers:**
+    *   Create installers for each platform (e.g., using Inno Setup for Windows, `dmgbuild` for macOS).
+
+**Acceptance Criteria:**
+
+*   A single executable file is created for Windows.
+*   A single application bundle is created for macOS.
+*   The packaged application runs correctly on a clean machine without requiring manual dependency installation.
+
+### Phase 10: Documentation
+
+**Description:**
+
+This phase will address the documentation requirements outlined in the SoW, ensuring that the final product is delivered with full documentation for installation, configuration, and troubleshooting.
+
+**Steps:**
+
+1.  **Write Installation Guide:**
+    *   Write a detailed installation guide for the packaged application on Windows and macOS.
+2.  **Write Configuration Guide:**
+    *   Write a comprehensive configuration guide that explains every setting in the UI's Settings Panel.
+3.  **Write Troubleshooting Guide:**
+    *   Write a troubleshooting guide that covers common errors and their solutions.
+4.  **Update `README.md`:**
+    *   Update the `README.md` file for developers, ensuring that it is current and provides all the necessary information for setting up a development environment.
+
+**Acceptance Criteria:**
+
+*   Clear and comprehensive documentation is provided for installation, configuration, and troubleshooting.
+*   The `README.md` is up-to-date for developers.
