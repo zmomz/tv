@@ -102,6 +102,8 @@ Follow this checklist to diagnose common issues.
 4.  **Webhook fails with 404 Not Found:**
     - Double-check the endpoint URL. The correct format is `/api/webhook/webhook/{user_id}`.
     - Verify the `user_id` exists in the database.
+5.  **API returns 403 Forbidden:**
+    - This indicates a permissions issue. Verify that the logged-in user has the required role (e.g., "admin") to access the requested endpoint.
 
 ## API Quick Reference
 
