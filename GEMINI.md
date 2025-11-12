@@ -164,6 +164,17 @@ Follow this checklist to diagnose common issues.
 *   **State Management:** For simple, local state, use `useState`. For state that needs to be shared across multiple components, use the Context API (`useContext`). For complex, application-wide state, a dedicated library like Redux or Zustand should be considered. Avoid "prop drilling."
 *   **Services:** All API interactions should be handled in a dedicated service layer (`src/services/api.js`), not directly within components.
 
+### Frontend Development Plan
+
+The frontend will be developed using a Test-Driven Development (TDD) approach with Google's Material UI (MUI) for the component library.
+
+1.  **Setup Material UI (MUI):** Add the necessary MUI dependencies (`@mui/material`, `@emotion/react`, `@emotion/styled`, `@mui/icons-material`) to the `frontend/package.json` to start using its components.
+2.  **Establish TDD Workflow:** Utilize the existing Jest and React Testing Library setup. For each new component, the workflow will be:
+    *   Write a test file (`.test.js`) that asserts the component renders correctly and handles user interactions.
+    *   Create the component file, which will initially fail the tests.
+    *   Implement the component to make the tests pass.
+3.  **First Component (Login Page):** The first step is to refactor the existing login functionality in `App.js` into its own dedicated, well-structured, and styled `Login` component, following the TDD workflow.
+
 ### Google Material UI (MUI) - *Future Use*
 
 *   **Theming:** All styling (colors, typography, spacing) must be managed through a central theme file using `createTheme` and `ThemeProvider`. Do not use hardcoded colors or styles in components.

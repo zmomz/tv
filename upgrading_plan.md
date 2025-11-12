@@ -220,12 +220,27 @@ Develop the full, multi-screen web UI for real-time monitoring and analytics, as
 **File:** `backend/app/api/dashboard.py`, `backend/app/api/positions.py`, etc.
 - Create all necessary API endpoints to provide real-time data for every widget and table specified in **SoW 7.2 (A-E)**. This includes data for the dashboard, positions table, risk panel, queue view, and logs.
 
-### Step 6.2: Frontend Component Development
-- **Live Dashboard:** Build the global overview screen.
-- **Positions & Pyramids View:** Build the main trading table with the expandable detailed DCA view.
-- **Risk Engine Panel:** Build the dedicated view for monitoring Risk Engine status and projections.
-- **Waiting Queue View:** Build the UI for the waiting queue with all required columns and actions.
-- **Advanced Log Viewer:** Build the full system event console with search, filtering, and color-coding.
+### Step 6.2: Frontend Development Strategy
+
+Frontend development will follow a structured, Test-Driven Development (TDD) methodology using Google's Material UI (MUI) for a consistent and high-quality user interface.
+
+1.  **Setup Material UI (MUI):**
+    *   Integrate MUI dependencies (`@mui/material`, `@emotion/react`, `@emotion/styled`, `@mui/icons-material`) into the project.
+    *   Establish a global theme (`theme.js`) to ensure design consistency (colors, typography, spacing) across all components.
+
+2.  **Establish TDD Workflow:**
+    *   Utilize the existing Jest and React Testing Library setup for all component testing.
+    *   For each component, a test file will be created first to define the expected behavior and rendering. The component will then be built to satisfy the test conditions.
+
+3.  **Component Development Order:**
+    *   **Authentication:** Refactor the existing login logic into a dedicated, styled, and tested `Login` component.
+    *   **Core Layout:** Create a main application layout component that includes navigation, a header, and a content area.
+    *   **Dashboard:** Build the components for the Live Dashboard screen.
+    *   **Positions View:** Develop the main trading table, including the expandable detailed DCA view.
+    *   **Risk Engine Panel:** Build the dedicated view for monitoring Risk Engine status.
+    *   **Queue View:** Create the UI for the waiting queue.
+    *   **Log Viewer:** Build the advanced system event console.
+    *   **Settings Panel:** Develop the UI for the configuration management panel.
 
 ---
 
