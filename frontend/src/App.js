@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { ThemeProvider } from '@mui/material/styles';
+import theme from './theme/theme';
 import Dashboard from './components/dashboard/Dashboard';
 import Positions from './components/positions/Positions';
+import Login from './components/auth/Login';
+import MainLayout from './components/layout/MainLayout'; // Import MainLayout
 import { auth, api } from './services/api';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [positions, setPositions] = useState([]);
   const [health, setHealth] = useState(null);
 
@@ -29,8 +31,7 @@ function App() {
     fetchData();
   }, [token]);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleLogin = async (email, password) => {
     try {
       const response = await auth.login(email, password);
       localStorage.setItem('token', response.data.access_token);
@@ -40,38 +41,19 @@ function App() {
     }
   };
 
-  if (!token) {
-    return (
-      <div className="App">
-        <h1>Login</h1>
-        <form onSubmit={handleLogin}>
-          <label>
-            Email:
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label>
-            Password:
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          <button type="submit">Login</button>
-        </form>
-      </div>
-    );
-  }
-
   return (
-    <div className="App">
-      <Dashboard health={health} />
-      <Positions positions={positions} />
-    </div>
+    <ThemeProvider theme={theme}>
+      <div className="App">
+        {!token ? (
+          <Login onLogin={handleLogin} />
+        ) : (
+          <MainLayout>
+            <Dashboard health={health} />
+            <Positions positions={positions} />
+          </MainLayout>
+        )}
+      </div>
+    </ThemeProvider>
   );
 }
 
