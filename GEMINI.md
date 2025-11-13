@@ -83,3 +83,12 @@ This protocol is designed to work with the phased approach in `execution_plan.md
   ```bash
   docker compose exec app alembic downgrade -1
   ```
+
+---
+
+## Lessons Learned (Live Log)
+
+- **SQLAlchemy 2.0 Async Mocking:** Unit tests for services using `db.execute()` require a specific mocking pattern. The mock for `db.execute` must *not* be an `asyncio.Future` itself. Instead, it should be a `MagicMock` instance whose `scalars()` and `all()` methods are pre-configured. The application code's `await result.scalars().all()` will then resolve correctly without needing the mock to be a future.
+  - **Correct Pattern:** `mock_result = MagicMock(); mock_result.scalars.return_value.all.return_value = [...]; mock_db_session.execute.return_value = mock_result`
+- **Tool Brittleness:** The `replace` tool is extremely sensitive to whitespace and context. When fixing multiple similar errors across files, this led to repeated `IndentationError`s. The path forward is to be extremely precise with the `old_string` parameter, including significant and unique surrounding context, and to fix issues one file at a time, re-reading the file if a replacement fails.
+- **Database Fixture Resolution:** Pytest fixtures that are `async_generator`s (like the `db_session` fixture) must be resolved within an `async for` loop in the test function (e.g., `async for session in db_session: ...`). Passing the generator directly to a service that expects a session object will cause `AttributeError`s.
