@@ -1,14 +1,18 @@
 import pytest
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import MagicMock, patch, AsyncMock
 from uuid import uuid4
 from decimal import Decimal
+from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.services.tp_manager import TPManager
 from backend.app.models.trading_models import PositionGroup, Pyramid
 from backend.app.core.config import settings
 
 @pytest.fixture
 def mock_db_session():
-    return MagicMock()
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock()
+    return session
 
 @pytest.fixture
 def tp_manager(mock_db_session):
@@ -36,11 +40,16 @@ def mock_pyramid():
     pyr.status = "open"
     return pyr
 
-def test_check_per_leg_tp_hit(tp_manager, mock_position_group, mock_pyramid, mock_db_session):
+@pytest.mark.asyncio
+async def test_check_per_leg_tp_hit(tp_manager, mock_position_group, mock_pyramid, mock_db_session):
     mock_position_group.pyramids = [mock_pyramid]
-    mock_position_group.current_price = Decimal("30000") # Price hits TP
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_pyramid]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
 
-    tp_hit_result = tp_manager.check_per_leg_tp(mock_position_group)
+    tp_hit_result = await tp_manager.check_per_leg_tp(mock_position_group)
 
     assert tp_hit_result is not None
     assert tp_hit_result['group_id'] == mock_position_group.id
@@ -49,21 +58,35 @@ def test_check_per_leg_tp_hit(tp_manager, mock_position_group, mock_pyramid, moc
     assert mock_pyramid.status == "closed"
     mock_db_session.commit.assert_called_once()
 
-def test_check_per_leg_tp_not_hit(tp_manager, mock_position_group, mock_pyramid, mock_db_session):
+@pytest.mark.asyncio
+async def test_check_per_leg_tp_not_hit(tp_manager, mock_position_group, mock_pyramid, mock_db_session):
     mock_position_group.pyramids = [mock_pyramid]
     mock_position_group.current_price = Decimal("29500") # Price does not hit TP
 
-    tp_hit_result = tp_manager.check_per_leg_tp(mock_position_group)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_pyramid]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
+
+    tp_hit_result = await tp_manager.check_per_leg_tp(mock_position_group)
 
     assert tp_hit_result is None
     assert mock_pyramid.status == "open"
     mock_db_session.commit.assert_not_called()
 
-def test_check_per_leg_tp_no_open_pyramids(tp_manager, mock_position_group, mock_db_session):
+@pytest.mark.asyncio
+async def test_check_per_leg_tp_no_open_pyramids(tp_manager, mock_position_group, mock_db_session):
     mock_position_group.pyramids = []
     mock_position_group.current_price = Decimal("30000")
 
-    tp_hit_result = tp_manager.check_per_leg_tp(mock_position_group)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
+
+    tp_hit_result = await tp_manager.check_per_leg_tp(mock_position_group)
 
     assert tp_hit_result is None
     mock_db_session.commit.assert_not_called()

@@ -1,8 +1,10 @@
 import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession # Use AsyncSession
+from sqlalchemy import select
 
 from backend.app.services.order_service import place_dca_orders, handle_filled_order, cancel_pending_orders, monitor_order_fills
 from backend.app.models.trading_models import PositionGroup, DCAOrder
@@ -23,11 +25,13 @@ class MockAsyncContextManager:
 @pytest.fixture
 def mock_db_session():
     """Mocks a SQLAlchemy database session."""
-    return MagicMock(spec=Session)
+    return MagicMock(spec=AsyncSession) # Use AsyncSession
 
 @pytest.fixture
 def mock_position_group():
-    """Mocks a PositionGroup instance."""
+    """
+Mocks a PositionGroup instance.
+"""
     pg = MagicMock(spec=PositionGroup)
     pg.id = UUID('12345678-1234-5678-1234-567812345678')
     pg.user_id = UUID('00000000-0000-0000-0000-000000000001')
@@ -90,10 +94,11 @@ async def test_place_dca_orders_successfully(mock_db_session, mock_position_grou
         mock_exchange_manager.__aexit__.assert_awaited_once()
         mock_db_session.commit.assert_called_once()
 
-def test_handle_filled_order_updates_status(mock_db_session):
+@pytest.mark.asyncio # Make test async
+async def test_handle_filled_order_updates_status(mock_db_session):
     dca_order = MagicMock(spec=DCAOrder)
     fill_data = {"price": "99.50", "filled": "5.0"}
-    handle_filled_order(mock_db_session, dca_order, fill_data)
+    await handle_filled_order(mock_db_session, dca_order, fill_data) # Await the call
     assert dca_order.status == "filled"
     mock_db_session.commit.assert_called_once()
 
@@ -101,9 +106,13 @@ def test_handle_filled_order_updates_status(mock_db_session):
 async def test_cancel_pending_orders_successfully(mock_db_session, mock_position_group, mock_exchange_manager):
     order1 = MagicMock(spec=DCAOrder)
     order1.exchange_order_id = "order_id_1"
-    order1.position_group = mock_position_group
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [order1]
-
+    order1.group_id = mock_position_group.id # Corrected to group_id
+    order1.position_group = mock_position_group # Add position_group attribute
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [order1]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
     with patch('backend.app.services.exchange_manager.ExchangeManager', return_value=mock_exchange_manager) as mock_exchange_manager_class:
         await cancel_pending_orders(mock_db_session, mock_position_group.id)
 
@@ -124,11 +133,15 @@ async def test_monitor_order_fills_updates_filled_orders(
     pending_order = MagicMock(spec=DCAOrder)
     pending_order.id = UUID('11111111-1111-1111-1111-111111111111')
     pending_order.exchange_order_id = "pending_order_id"
-    pending_order.position_group = mock_position_group
+    pending_order.group_id = mock_position_group.id # Corrected to group_id
     pending_order.status = "pending"
+    pending_order.position_group = mock_position_group # Add position_group attribute
 
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [pending_order]
-
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [pending_order]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
     mock_context = MockAsyncContextManager(mock_exchange_manager)
     # Mock the exchange to return a filled status for the pending order
     mock_exchange_manager.fetch_order.return_value = {

@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 COPY ./backend /code/backend
 
 # Set the python path to include the project root and the app directory
-ENV PYTHONPATH="/code"
+ENV PYTHONPATH="/code/backend"
 
 # Command to run the application
 # We use --reload-dir to watch for changes in our mounted volume

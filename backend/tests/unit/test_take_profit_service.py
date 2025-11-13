@@ -1,11 +1,13 @@
 import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession # Use AsyncSession
+from sqlalchemy import select
 
 from backend.app.services.take_profit_service import execute_per_leg_tp, execute_aggregate_tp, execute_hybrid_tp
-from backend.app.models.trading_models import PositionGroup, DCAOrder
+from backend.app.models.trading_models import PositionGroup, DCAOrder, PositionGroupStatus
 from backend.app.services.exchange_manager import ExchangeManager
 
 # Helper class for mocking the async context manager
@@ -20,11 +22,13 @@ class MockAsyncContextManager:
 @pytest.fixture
 def mock_db_session():
     """Mocks a SQLAlchemy database session."""
-    return MagicMock(spec=Session)
+    return MagicMock(spec=AsyncSession) # Use AsyncSession
 
 @pytest.fixture
 def mock_exchange_manager_instance():
-    """Mocks the ExchangeManager instance."""
+    """
+Mocks the ExchangeManager instance.
+"""
     manager = MagicMock(spec=ExchangeManager)
     manager.get_current_price = AsyncMock()
     manager.place_order = AsyncMock()
@@ -32,15 +36,22 @@ def mock_exchange_manager_instance():
 
 @pytest.fixture
 def mock_position_group():
-    """Mocks a PositionGroup with a per-leg TP configuration."""
+    """
+Mocks a PositionGroup with a per-leg TP configuration.
+"""
     pg = MagicMock(spec=PositionGroup)
     pg.id = UUID('12345678-1234-5678-1234-567812345678')
     pg.user_id = UUID('00000000-0000-0000-0000-000000000001')
     pg.exchange = "binance"
     pg.symbol = "BTC/USDT"
+    pg.tp_mode = "per_leg" # Use separate field
+    pg.tp_aggregate_percent = None # Use separate field
+    pg.current_price = Decimal("0.0") # Add current_price for mocking
+    pg.status = PositionGroupStatus.LIVE # Add status
     pg.tp_config = {
-        "tp_mode": "per-leg",
-        "tp_price_targets": [Decimal("1.01"), Decimal("1.02")] # 1% and 2% profit
+        "tp_price_targets": [Decimal("1.01"), Decimal("1.005")], # Example for per_leg
+        "aggregate_profit_target": Decimal("1.05"), # Example for aggregate/hybrid
+        "partial_close_percentage": Decimal("0.5") # Example for hybrid
     }
     return pg
 
@@ -54,22 +65,29 @@ async def test_execute_per_leg_tp_triggers_on_price_target(
     """
     # Setup: One filled order, one open, one already taken profit
     dca_order_filled = MagicMock(spec=DCAOrder)
+    dca_order_filled.id = UUID('11111111-1111-1111-1111-111111111111')
+    dca_order_filled.group_id = mock_position_group.id # Corrected to group_id
+    dca_order_filled.pyramid_id = UUID('22222222-2222-2222-2222-222222222222')
+    dca_order_filled.leg_index = 0
     dca_order_filled.dca_level = 0
     dca_order_filled.filled_price = Decimal("100.00")
     dca_order_filled.quantity = Decimal("1.0")
     dca_order_filled.status = "filled"
+    dca_order_filled.tp_price = Decimal("101.00") # Set TP price
 
-    # The application code filters for "filled", so the mock should only return the filled order.
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [
-        dca_order_filled
-    ]
-
+    # Mock the execute method for async SQLAlchemy
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [dca_order_filled]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
     # Mock the exchange manager context and current price
     mock_context = MockAsyncContextManager(mock_exchange_manager_instance)
     # Price (101.50) is above the 1% TP target (101.00) for the first leg
     mock_exchange_manager_instance.get_current_price.return_value = Decimal("101.50")
+    mock_position_group.current_price = Decimal("101.50") # Set current_price on position group
 
-    with patch('backend.app.services.order_service.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange:
+    with patch('backend.app.services.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange:
         mock_get_exchange.return_value = mock_context
 
         await execute_per_leg_tp(mock_db_session, mock_position_group)
@@ -87,6 +105,7 @@ async def test_execute_per_leg_tp_triggers_on_price_target(
         
         # Verify the order's status was updated in the DB
         assert dca_order_filled.status == "tp-taken"
+        mock_db_session.add.assert_called_once_with(dca_order_filled)
         mock_db_session.commit.assert_called_once()
 
 @pytest.mark.asyncio
@@ -98,29 +117,36 @@ async def test_execute_aggregate_tp_triggers_on_price_target(
     average entry price meets the TP target for the entire position group.
     """
     # Adjust position group for aggregate TP
-    mock_position_group.tp_config = {
-        "tp_mode": "aggregate",
-        "tp_price_targets": [Decimal("1.05")] # 5% aggregate profit
-    }
+    mock_position_group.tp_mode = "aggregate" # Use separate field
+    mock_position_group.tp_aggregate_percent = Decimal("1.05") # 5% aggregate profit
 
     # Setup: Multiple filled orders for calculating average entry price
     dca_order_1 = MagicMock(spec=DCAOrder)
+    dca_order_1.id = UUID('11111111-1111-1111-1111-111111111111')
+    dca_order_1.group_id = mock_position_group.id # Corrected to group_id
     dca_order_1.status = "filled"
     dca_order_1.filled_price = Decimal("100.00")
     dca_order_1.quantity = Decimal("1.0")
 
     dca_order_2 = MagicMock(spec=DCAOrder)
+    dca_order_2.id = UUID('22222222-2222-2222-2222-222222222222')
+    dca_order_2.group_id = mock_position_group.id # Corrected to group_id
     dca_order_2.status = "filled"
     dca_order_2.filled_price = Decimal("105.00")
     dca_order_2.quantity = Decimal("1.0")
 
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [
         dca_order_1, dca_order_2
     ]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
 
     mock_context = MockAsyncContextManager(mock_exchange_manager_instance)
     # Current price (111.00) is above the 5% TP target (107.50) for average entry (102.50)
     mock_exchange_manager_instance.get_current_price.return_value = Decimal("111.00")
+    mock_position_group.current_price = Decimal("111.00") # Set current_price on position group
 
     with patch('backend.app.services.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange, \
          patch('backend.app.services.take_profit_service.calculate_average_entry_price', return_value=Decimal("102.50")) as mock_avg_entry:
@@ -141,7 +167,8 @@ async def test_execute_aggregate_tp_triggers_on_price_target(
         )
         
         # Verify position group status updated
-        assert mock_position_group.status == "closed"
+        assert mock_position_group.status == PositionGroupStatus.CLOSED # Use Enum member
+        mock_db_session.add.assert_called_once_with(mock_position_group)
         mock_db_session.commit.assert_called_once()
 
 @pytest.mark.asyncio
@@ -154,30 +181,36 @@ async def test_execute_hybrid_tp_triggers_on_conditions(
     if the aggregate profit target is met.
     """
     # Adjust position group for hybrid TP
-    mock_position_group.tp_config = {
-        "tp_mode": "hybrid",
-        "aggregate_profit_target": Decimal("1.05"), # 5% aggregate profit
-        "partial_close_percentage": Decimal("0.5") # Close 50% of position
-    }
+    mock_position_group.tp_mode = "hybrid" # Use separate field
+    mock_position_group.tp_aggregate_percent = Decimal("1.05") # 5% aggregate profit
+    mock_position_group.partial_close_percentage = Decimal("0.5") # Add partial_close_percentage
 
     # Setup: Multiple filled orders for calculating average entry price
     dca_order_1 = MagicMock(spec=DCAOrder)
+    dca_order_1.id = UUID('11111111-1111-1111-1111-111111111111')
+    dca_order_1.group_id = mock_position_group.id # Corrected to group_id
     dca_order_1.status = "filled"
     dca_order_1.filled_price = Decimal("100.00")
     dca_order_1.quantity = Decimal("1.0")
 
     dca_order_2 = MagicMock(spec=DCAOrder)
+    dca_order_2.id = UUID('22222222-2222-2222-2222-222222222222')
+    dca_order_2.group_id = mock_position_group.id # Corrected to group_id
     dca_order_2.status = "filled"
     dca_order_2.filled_price = Decimal("105.00")
     dca_order_2.quantity = Decimal("1.0")
 
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [
         dca_order_1, dca_order_2
     ]
-
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
     mock_context = MockAsyncContextManager(mock_exchange_manager_instance)
     # Current price (111.00) is above the 5% TP target (107.50) for average entry (102.50)
     mock_exchange_manager_instance.get_current_price.return_value = Decimal("111.00")
+    mock_position_group.current_price = Decimal("111.00") # Set current_price on position group
 
     with patch('backend.app.services.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange, \
          patch('backend.app.services.take_profit_service.calculate_average_entry_price', return_value=Decimal("102.50")) as mock_avg_entry:
@@ -202,6 +235,7 @@ async def test_execute_hybrid_tp_triggers_on_conditions(
         # For now, we'll just assert that it's not 'closed' if it was not fully closed.
         # The actual status update logic will be in the implementation.
         # assert mock_position_group.status == "partially-closed" # This will be implemented in the service
+        mock_db_session.add.assert_called_once_with(mock_position_group)
         mock_db_session.commit.assert_called_once()
 
 @pytest.mark.asyncio
@@ -213,16 +247,25 @@ async def test_execute_per_leg_tp_does_not_trigger_below_price_target(
     is below the calculated TP target.
     """
     dca_order_filled = MagicMock(spec=DCAOrder)
-    dca_order_filled.status = "filled"
+    dca_order_filled.id = UUID('11111111-1111-1111-1111-111111111111')
+    dca_order_filled.group_id = mock_position_group.id # Corrected to group_id
+    dca_order_filled.pyramid_id = UUID('22222222-2222-2222-2222-222222222222')
+    dca_order_filled.leg_index = 0
     dca_order_filled.dca_level = 0
+    dca_order_filled.status = "filled"
     dca_order_filled.filled_price = Decimal("100.00")
     dca_order_filled.quantity = Decimal("1.0")
+    dca_order_filled.tp_price = Decimal("101.00") # Set TP price
 
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [dca_order_filled]
-
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [dca_order_filled]
+    future_result = asyncio.Future()
+    future_result.set_result(mock_result)
+    mock_db_session.execute.return_value = future_result
     mock_context = MockAsyncContextManager(mock_exchange_manager_instance)
     # Price (100.50) is below the 1% TP target (101.00)
     mock_exchange_manager_instance.get_current_price.return_value = Decimal("100.50")
+    mock_position_group.current_price = Decimal("100.50") # Set current_price on position group
 
     with patch('backend.app.services.order_service.exchange_manager.get_exchange', new_callable=AsyncMock) as mock_get_exchange:
         mock_get_exchange.return_value = mock_context

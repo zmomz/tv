@@ -1,5 +1,6 @@
 from typing import List
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from ..models.trading_models import PositionGroup, DCAOrder
 from ..services import exchange_manager, grid_calculator, validation_service
 from uuid import UUID
@@ -40,10 +41,8 @@ async def place_dca_orders(db: Session, position_group: PositionGroup) -> List[D
             )
             
             db_order = DCAOrder(
-                position_group_id=position_group.id,
-                pyramid_level=0,
-                dca_level=i,
-                expected_price=price,
+                group_id=position_group.id,
+                leg_index=i,
                 quantity=quantity,
                 status="pending",
                 exchange_order_id=order["id"],
@@ -58,10 +57,10 @@ async def monitor_order_fills(db: Session) -> None:
     """
     Monitor for filled orders and update the database.
     """
-    pending_orders = db.query(DCAOrder).filter(
-        DCAOrder.status == "pending"
-    ).all()
-
+    result = await db.execute(
+        select(DCAOrder).where(DCAOrder.status == "pending")
+    )
+    pending_orders = (await result).scalars().all()
     # Group orders by user and exchange to minimize API calls
     exchange_groups = {}
     for order in pending_orders:
@@ -79,7 +78,7 @@ async def monitor_order_fills(db: Session) -> None:
                         symbol=order.position_group.symbol
                     )
                     if exchange_order and exchange_order["status"] == "closed": # 'closed' typically means filled in ccxt
-                        handle_filled_order(db, order, exchange_order)
+                        await handle_filled_order(db, order, exchange_order)
                 except Exception as e:
                     # Log the error, but don't stop monitoring other orders
                     print(f"Error fetching order {order.exchange_order_id}: {e}")
@@ -90,24 +89,26 @@ async def place_partial_close_order(db: Session, position_group: PositionGroup, 
     """
     pass
 
-def handle_filled_order(db: Session, dca_order: DCAOrder, fill_data: dict) -> None:
+async def handle_filled_order(db: Session, dca_order: DCAOrder, fill_data: dict) -> None:
     """
     Handle a filled order.
     """
     dca_order.status = "filled"
     dca_order.filled_price = Decimal(fill_data["price"])
     dca_order.filled_quantity = Decimal(fill_data["filled"])
-    db.commit()
+    await db.commit()
 
 async def cancel_pending_orders(db: Session, position_group_id: UUID) -> None:
     """
     Cancel all pending orders for a position group.
     """
-    orders = db.query(DCAOrder).filter(
-        DCAOrder.position_group_id == position_group_id,
-        DCAOrder.status == "pending",
-    ).all()
-    
+    result = await db.execute(
+        select(DCAOrder).where(
+            DCAOrder.group_id == position_group_id,
+            DCAOrder.status == "pending"
+        )
+    )
+    orders = (await result).scalars().all()    
     if orders:
         # Assuming all orders in a position group are for the same exchange and user
         position_group = orders[0].position_group

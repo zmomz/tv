@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from ..db.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
+from ..db.session import get_async_db
 from ..models.log_models import SystemLog, AuditLog
 from datetime import datetime, timedelta
 from typing import List
@@ -18,57 +19,61 @@ async def redirect_to_system_logs():
     raise HTTPException(status_code=307, detail="Redirecting to /api/logs/system", headers={"Location": "/api/logs/system"})
 
 @router.get("/system", response_model=List[SystemLogOut])
-def get_system_logs(
+async def get_system_logs(
     level: str = None,
     category: str = None,
     start_date: datetime = None,
     end_date: datetime = None,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """
     Get system logs.
     """
-    query = db.query(SystemLog)
+    query = select(SystemLog)
     if level:
-        query = query.filter(SystemLog.level == level)
+        query = query.where(SystemLog.level == level)
     if category:
-        query = query.filter(SystemLog.category == category)
+        query = query.where(SystemLog.category == category)
     if start_date:
-        query = query.filter(SystemLog.timestamp >= start_date)
+        query = query.where(SystemLog.timestamp >= start_date)
     if end_date:
-        query = query.filter(SystemLog.timestamp <= end_date)
-    return query.limit(limit).all()
+        query = query.where(SystemLog.timestamp <= end_date)
+    
+    result = await db.execute(query.limit(limit))
+    return result.scalars().all()
 
 @router.get("/audit", response_model=List[AuditLogOut])
-def get_audit_logs(
+async def get_audit_logs(
     user_id: str = None,
     action: str = None,
     start_date: datetime = None,
     end_date: datetime = None,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """
     Get audit logs.
     """
-    query = db.query(AuditLog)
+    query = select(AuditLog)
     if user_id:
-        query = query.filter(AuditLog.user_id == user_id)
+        query = query.where(AuditLog.user_id == user_id)
     if action:
-        query = query.filter(AuditLog.action == action)
+        query = query.where(AuditLog.action == action)
     if start_date:
-        query = query.filter(AuditLog.timestamp >= start_date)
+        query = query.where(AuditLog.timestamp >= start_date)
     if end_date:
-        query = query.filter(AuditLog.timestamp <= end_date)
-    return query.limit(limit).all()
+        query = query.where(AuditLog.timestamp <= end_date)
+    
+    result = await db.execute(query.limit(limit))
+    return result.scalars().all()
 
 @router.delete("/system/{days_old}")
-def delete_system_logs(
+async def delete_system_logs(
     days_old: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """
@@ -78,12 +83,12 @@ def delete_system_logs(
         raise HTTPException(status_code=400, detail="days_old must be a positive integer")
     
     cutoff_date = datetime.utcnow() - timedelta(days=days_old)
-    db.query(SystemLog).filter(SystemLog.timestamp < cutoff_date).delete()
-    db.commit()
+    await db.execute(delete(SystemLog).where(SystemLog.timestamp < cutoff_date))
+    await db.commit()
     return {"success": True}
 
 @router.post("/export")
-def export_logs(current_user: User = Depends(require_role("admin"))):
+async def export_logs(current_user: User = Depends(require_role("admin"))):
     """
     Export logs as CSV/JSON.
     """

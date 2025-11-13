@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str
 
     # Security Settings
+    WEBHOOK_SECRET: str
     JWT_SECRET: str
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
     ENCRYPTION_KEY: str
     REDIS_URL: str
     PRECISION_CACHE_EXPIRY_SECONDS: int = 3600

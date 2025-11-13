@@ -1,19 +1,20 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.trading_models import PositionGroup, Pyramid
 from uuid import UUID
 from fastapi import Depends
-from ..db.session import get_db
+from ..db.session import get_async_db
 from decimal import Decimal
 from datetime import datetime
 from ..core.config import settings
 from .order_service import place_partial_close_order
-from ..models.risk_analytics_models import RiskAnalysis
+from ..models.risk_analytics_models import RiskAction
 
 class RiskEngine:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def evaluate_risk_conditions(self) -> None:
+    async def evaluate_risk_conditions(self) -> None:
         """
         Evaluate risk conditions and execute mitigation strategies.
         """
@@ -22,7 +23,7 @@ class RiskEngine:
         # evaluate the risk conditions for each one.
         pass
 
-    def should_activate_risk_engine(self, position_group: PositionGroup, unrealized_pnl_percent: Decimal) -> bool:
+    async def should_activate_risk_engine(self, position_group: PositionGroup, unrealized_pnl_percent: Decimal) -> bool:
         """
         Determine whether the risk engine should be activated for a position_group.
         Activation conditions from SoW 4.2:
@@ -33,7 +34,12 @@ class RiskEngine:
         """
         # 1. Check if all 5 pyramids are received (if required by config)
         if settings.RISK_REQUIRE_FULL_PYRAMIDS:
-            pyramid_count = self.db.query(Pyramid).filter(Pyramid.position_group_id == position_group.id).count()
+            result = await self.db.execute(
+                select(func.count())
+                .select_from(Pyramid)
+                .where(Pyramid.group_id == position_group.id)
+            )
+            pyramid_count = (await result).scalar_one()
             if pyramid_count < 5:
                 return False
 
@@ -44,19 +50,19 @@ class RiskEngine:
         # 3. Check post-full waiting time (implicitly assuming 'pyramid_full' as timer_start_condition)
         if settings.RISK_POST_FULL_WAIT_MINUTES > 0:
             # Find the creation time of the last pyramid entry
-            last_pyramid = self.db.query(Pyramid).filter(
-                Pyramid.position_group_id == position_group.id
-            ).order_by(Pyramid.created_at.desc()).first()
+            result = await self.db.execute(
+                select(Pyramid)
+                .where(Pyramid.group_id == position_group.id)
+                .order_by(Pyramid.entry_timestamp.desc())
+            )
+            last_pyramid = (await result).scalars().first()
 
             if last_pyramid:
                 wait_time_seconds = settings.RISK_POST_FULL_WAIT_MINUTES * 60
-                time_since_last_pyramid = (datetime.utcnow() - last_pyramid.created_at).total_seconds()
+                time_since_last_pyramid = (datetime.utcnow() - last_pyramid.entry_timestamp).total_seconds()
                 if time_since_last_pyramid < wait_time_seconds:
                     return False
             else:
-                # If RISK_REQUIRE_FULL_PYRAMIDS is False and no pyramids exist, this condition might be skipped
-                # For now, if no pyramids and wait time is required, return False.
-                # This logic might need refinement based on exact SoW interpretation for edge cases.
                 return False
 
         return True
@@ -66,20 +72,20 @@ class RiskEngine:
         Find all losing positions for a user, ranked by priority for risk mitigation.
         Ranking rules: 1) highest loss percent, 2) highest unrealized dollar loss, 3) oldest trade.
         """
-        # Query for live losing positions
-        losing_positions = self.db.query(PositionGroup).filter(
-            PositionGroup.user_id == user_id,
-            PositionGroup.status == "live",
-            PositionGroup.unrealized_pnl_percent < 0  # Only consider losing positions
-        ).all()
+        result = await self.db.execute(
+            select(PositionGroup).where(
+                PositionGroup.user_id == user_id,
+                PositionGroup.status == "active",
+                PositionGroup.unrealized_pnl_percent < 0
+            )
+        )
+        losing_positions = (await result).scalars().all()
 
-        # Sort by priority rules: highest loss percent (most negative), highest unrealized dollar loss (most negative), oldest trade
-        # Python's sort is stable, so we can sort by multiple keys in reverse order of importance
-        # For loss percent and USD loss, we want the *most negative* first, so we sort ascending on the absolute value, or descending on the negative value.
-        # For created_at, oldest first is ascending.
-        sorted_losing_positions = sorted(losing_positions,
-                                         key=lambda pg: (pg.unrealized_pnl_percent, pg.unrealized_pnl_usd, pg.created_at),
-                                         reverse=False) # Sort ascending for percent and USD loss (most negative first), then ascending for created_at
+        sorted_losing_positions = sorted(
+            losing_positions,
+            key=lambda pg: (pg.unrealized_pnl_percent, pg.unrealized_pnl_usd, pg.created_at),
+            reverse=False
+        )
 
         return sorted_losing_positions
 
@@ -87,17 +93,20 @@ class RiskEngine:
         """
         Find all winning positions for a user, ranked by highest profit in USD.
         """
-        # Query for live winning positions
-        winning_positions = self.db.query(PositionGroup).filter(
-            PositionGroup.user_id == user_id,
-            PositionGroup.status == "live",
-            PositionGroup.unrealized_pnl_percent > 0  # Only consider winning positions
-        ).all()
+        result = await self.db.execute(
+            select(PositionGroup).where(
+                PositionGroup.user_id == user_id,
+                PositionGroup.status == "active",
+                PositionGroup.unrealized_pnl_usd > 0
+            )
+        )
+        winning_positions = (await result).scalars().all()
 
-        # Sort by highest unrealized dollar profit (descending)
-        sorted_winning_positions = sorted(winning_positions,
-                                          key=lambda pg: pg.unrealized_pnl_usd,
-                                          reverse=True)
+        sorted_winning_positions = sorted(
+            winning_positions,
+            key=lambda pg: pg.unrealized_pnl_usd,
+            reverse=True
+        )
 
         return sorted_winning_positions
 
@@ -118,9 +127,6 @@ class RiskEngine:
 
             profit_to_realize = min(required_usd - realized_profit, winner.unrealized_pnl_usd)
             
-            # This is a simplified assumption. In reality, you'd need to calculate the
-            # exact quantity to sell to realize this profit, which is complex.
-            # For now, we'll assume a direct mapping for the purpose of the test.
             await place_partial_close_order(
                 db=self.db,
                 position_group=winner,
@@ -128,20 +134,18 @@ class RiskEngine:
             )
             
             realized_profit += profit_to_realize
-            winning_positions_used.append(winner.id)
+            winning_positions_used.append(winner)
 
         # Log the operation
-        risk_analysis_entry = RiskAnalysis(
-            user_id=losing_position.user_id,
-            losing_position_group_id=losing_position.id,
-            winning_position_group_ids=[str(uuid) for uuid in winning_positions_used],
-            required_usd_to_cover=required_usd,
-            realized_profit_usd=realized_profit,
-            action_taken="Partial close of winning positions to cover loss.",
-            details={}
+        risk_action_entry = RiskAction(
+            group_id=losing_position.id,
+            action_type="offset_loss",
+            loser_group_id=losing_position.id,
+            loser_pnl_usd=losing_position.unrealized_pnl_usd,
+            winner_details=[{"group_id": str(w.id), "pnl_usd": str(w.unrealized_pnl_usd)} for w in winning_positions_used],
+            notes="Partial close of winning positions to cover loss."
         )
-        self.db.add(risk_analysis_entry)
-        self.db.commit()
+        self.db.add(risk_action_entry)
 
-def get_risk_engine(db: Session = Depends(get_db)) -> RiskEngine:
+def get_risk_engine(db: AsyncSession = Depends(get_async_db)) -> RiskEngine:
     return RiskEngine(db)

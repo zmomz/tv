@@ -16,7 +16,7 @@ logging.basicConfig(level=settings.APP_LOG_LEVEL.upper())
 logger = logging.getLogger(__name__)
 
 # Create all tables in the database
-Base.metadata.create_all(bind=engine)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

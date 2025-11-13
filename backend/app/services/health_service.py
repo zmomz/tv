@@ -1,5 +1,6 @@
-from sqlalchemy.orm import Session
-from ..db.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import text
+from ..db.session import get_async_db
 from ..services import exchange_manager
 from uuid import UUID
 
@@ -12,7 +13,7 @@ async def check_system_health() -> dict:
     # exchange connections, etc.
     return {"status": "ok"}
 
-async def check_exchange_health(db: Session, user_id: UUID) -> dict:
+async def check_exchange_health(db: AsyncSession, user_id: UUID) -> dict:
     """
     Check the health of the exchange connections for a user.
     """
@@ -25,10 +26,9 @@ async def check_database_health() -> dict:
     Check the health of the database connection.
     """
     try:
-        db: Session = next(get_db())
-        db.execute("SELECT 1")
-        db.close()
-        return {"status": "ok"}
+        async for db in get_async_db():
+            await db.execute(text("SELECT 1"))
+            return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

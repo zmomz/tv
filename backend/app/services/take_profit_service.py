@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from ..models.trading_models import PositionGroup, DCAOrder
 from ..services import exchange_manager
 from decimal import Decimal
@@ -18,10 +19,13 @@ async def execute_per_leg_tp(db: Session, position_group: PositionGroup) -> None
     Execute take-profit orders for each filled DCA leg that has met its target.
     """
     # Get only the orders that are filled and could potentially be sold
-    orders_to_check = db.query(DCAOrder).filter(
-        DCAOrder.position_group_id == position_group.id,
-        DCAOrder.status == "filled",
-    ).all()
+    result = await db.execute(
+        select(DCAOrder).where(
+            DCAOrder.group_id == position_group.id,
+            DCAOrder.status == "filled"
+        )
+    )
+    orders_to_check = (await result).scalars().all()
 
     if not orders_to_check:
         return
@@ -49,6 +53,7 @@ async def execute_per_leg_tp(db: Session, position_group: PositionGroup) -> None
                         amount=order.quantity
                     )
                     order.status = "tp-taken"
+                    db.add(order)
                     orders_updated = True
     
     if orders_updated:
@@ -75,10 +80,13 @@ async def execute_aggregate_tp(db: Session, position_group: PositionGroup) -> No
     """
     Execute a take-profit order for the entire position group.
     """
-    orders_to_check = db.query(DCAOrder).filter(
-        DCAOrder.position_group_id == position_group.id,
-        DCAOrder.status == "filled",
-    ).all()
+    result = await db.execute(
+        select(DCAOrder).where(
+            DCAOrder.group_id == position_group.id,
+            DCAOrder.status == "filled"
+        )
+    )
+    orders_to_check = (await result).scalars().all()
 
     if not orders_to_check:
         return
@@ -106,6 +114,7 @@ async def execute_aggregate_tp(db: Session, position_group: PositionGroup) -> No
                     amount=total_quantity
                 )
                 position_group.status = "closed" # Mark position group as closed
+                db.add(position_group)
                 db.commit()
 
 async def execute_hybrid_tp(db: Session, position_group: PositionGroup) -> None:
@@ -113,10 +122,13 @@ async def execute_hybrid_tp(db: Session, position_group: PositionGroup) -> None:
     Execute take-profit orders using a hybrid strategy.
     This implementation closes a percentage of the position if the aggregate profit target is met.
     """
-    orders_to_check = db.query(DCAOrder).filter(
-        DCAOrder.position_group_id == position_group.id,
-        DCAOrder.status == "filled",
-    ).all()
+    result = await db.execute(
+        select(DCAOrder).where(
+            DCAOrder.group_id == position_group.id,
+            DCAOrder.status == "filled"
+        )
+    )
+    orders_to_check = (await result).scalars().all()
 
     if not orders_to_check:
         return
@@ -150,4 +162,5 @@ async def execute_hybrid_tp(db: Session, position_group: PositionGroup) -> None:
                 )
                 # Update position group status to reflect partial closure
                 position_group.status = "partially-closed" # Or a more granular status
+                db.add(position_group)
                 db.commit()

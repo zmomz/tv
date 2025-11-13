@@ -1,16 +1,16 @@
 from sqlalchemy.orm import Session
-from ..models.trading_models import PositionGroup, QueueEntry # Import QueueEntry
+from ..models.trading_models import PositionGroup, QueuedSignal # Import QueuedSignal
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime # Import datetime
 
-def add_to_queue(db: Session, signal: dict, user_id: UUID) -> QueueEntry:
+def add_to_queue(db: Session, signal: dict, user_id: UUID) -> QueuedSignal:
     """
     Add a signal to the queue.
     """
     priority_score = calculate_priority(signal) # calculate_priority will be updated later to take signal directly
 
-    queue_entry = QueueEntry(
+    queue_entry = QueuedSignal(
         user_id=user_id,
         exchange=signal["exchange"],
         symbol=signal["symbol"],
@@ -23,14 +23,14 @@ def add_to_queue(db: Session, signal: dict, user_id: UUID) -> QueueEntry:
     db.commit()
     return queue_entry
 
-async def promote_from_queue(db: Session, user_id: UUID) -> QueueEntry | None:
+async def promote_from_queue(db: Session, user_id: UUID) -> QueuedSignal | None:
     """
     Promote a signal from the queue to a live position based on priority rules.
     Priority rules: 1) Highest priority_score, 2) Highest replacement_count, 3) FIFO (oldest created_at).
     """
     # Query for all queue entries for the user
-    queue_entries = db.query(QueueEntry).filter(
-        QueueEntry.user_id == user_id
+    queue_entries = db.query(QueuedSignal).filter(
+        QueuedSignal.user_id == user_id
     ).all()
 
     if not queue_entries:
@@ -45,7 +45,7 @@ async def promote_from_queue(db: Session, user_id: UUID) -> QueueEntry | None:
     highest_priority_entry = sorted_entries[0]
 
     # Mark as promoted and delete from queue
-    highest_priority_entry.status = "promoted" # Assuming QueueEntry has a status field
+    highest_priority_entry.status = "promoted" # Assuming QueuedSignal has a status field
     db.delete(highest_priority_entry)
     db.commit()
 
@@ -64,9 +64,9 @@ def handle_signal_replacement(db: Session, new_signal: dict, user_id: UUID) -> N
     Handle a signal that is a replacement for an existing signal in
     the queue.
     """
-    existing_entry = db.query(QueueEntry).filter(
-        QueueEntry.user_id == user_id,
-        QueueEntry.symbol == new_signal["symbol"]
+    existing_entry = db.query(QueuedSignal).filter(
+        QueuedSignal.user_id == user_id,
+        QueuedSignal.symbol == new_signal["symbol"]
     ).first()
 
     if existing_entry:

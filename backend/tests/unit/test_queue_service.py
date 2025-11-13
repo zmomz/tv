@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime # Import datetime
 
 from backend.app.services.queue_service import add_to_queue, handle_signal_replacement, promote_from_queue, calculate_priority
-from backend.app.models.trading_models import QueueEntry, PositionGroup # Import PositionGroup for potential future use
+from backend.app.models.trading_models import QueuedSignal, PositionGroup # Import PositionGroup for potential future use
 
 @pytest.fixture
 def mock_db_session():
@@ -28,11 +28,11 @@ def mock_signal():
 
 def test_add_to_queue_creates_new_entry(mock_db_session, mock_signal, mock_user_id):
     """
-    Test that add_to_queue creates and persists a new QueueEntry.
+    Test that add_to_queue creates and persists a new QueuedSignal.
     """
-    # Mock the QueueEntry constructor to return a MagicMock instance
-    with patch('backend.app.services.queue_service.QueueEntry') as MockQueueEntry:
-        mock_queue_entry_instance = MockQueueEntry.return_value
+    # Mock the QueuedSignal constructor to return a MagicMock instance
+    with patch('backend.app.services.queue_service.QueuedSignal') as MockQueuedSignal:
+        mock_queue_entry_instance = MockQueuedSignal.return_value
         mock_queue_entry_instance.priority_score = Decimal("0.0") # Default value
         mock_queue_entry_instance.replacement_count = 0 # Default value
 
@@ -41,7 +41,7 @@ def test_add_to_queue_creates_new_entry(mock_db_session, mock_signal, mock_user_
             queue_entry = add_to_queue(mock_db_session, mock_signal, mock_user_id)
 
             # Assertions
-            MockQueueEntry.assert_called_once_with(
+            MockQueuedSignal.assert_called_once_with(
                 user_id=mock_user_id,
                 exchange=mock_signal["exchange"],
                 symbol=mock_signal["symbol"],
@@ -56,9 +56,9 @@ def test_add_to_queue_creates_new_entry(mock_db_session, mock_signal, mock_user_
 
 def test_handle_signal_replacement_updates_existing_entry(mock_db_session, mock_signal, mock_user_id):
     """
-    Test that handle_signal_replacement updates an existing QueueEntry and increments replacement_count.
+    Test that handle_signal_replacement updates an existing QueuedSignal and increments replacement_count.
     """
-    existing_entry = MagicMock(spec=QueueEntry)
+    existing_entry = MagicMock(spec=QueuedSignal)
     existing_entry.original_signal = {"old_data": True}
     existing_entry.replacement_count = 5
     existing_entry.priority_score = Decimal("50.0")
@@ -69,7 +69,7 @@ def test_handle_signal_replacement_updates_existing_entry(mock_db_session, mock_
         handle_signal_replacement(mock_db_session, mock_signal, mock_user_id)
 
         # Assertions
-        mock_db_session.query.assert_called_once_with(QueueEntry)
+        mock_db_session.query.assert_called_once_with(QueuedSignal)
         mock_db_session.query.return_value.filter.assert_called_once_with(ANY, ANY)
         assert existing_entry.original_signal == mock_signal
         assert existing_entry.replacement_count == 6
@@ -85,7 +85,7 @@ def test_handle_signal_replacement_no_existing_entry(mock_db_session, mock_signa
     handle_signal_replacement(mock_db_session, mock_signal, mock_user_id)
 
     # Assertions
-    mock_db_session.query.assert_called_once_with(QueueEntry)
+    mock_db_session.query.assert_called_once_with(QueuedSignal)
     mock_db_session.query.return_value.filter.assert_called_once_with(ANY, ANY)
     mock_db_session.commit.assert_not_called()
 
@@ -97,21 +97,21 @@ async def test_promote_from_queue_selects_highest_priority(mock_db_session, mock
     For this test, we'll focus on replacement count and FIFO for simplicity.
     """
     # Setup: Multiple queue entries with different priorities
-    entry_low_priority = MagicMock(spec=QueueEntry)
+    entry_low_priority = MagicMock(spec=QueuedSignal)
     entry_low_priority.id = UUID('11111111-1111-1111-1111-111111111111')
     entry_low_priority.priority_score = Decimal("10.0")
     entry_low_priority.replacement_count = 0
     entry_low_priority.created_at = datetime(2023, 1, 1, 10, 0, 0)
     entry_low_priority.original_signal = {"symbol": "LOW/USDT"}
 
-    entry_high_replacement = MagicMock(spec=QueueEntry)
+    entry_high_replacement = MagicMock(spec=QueuedSignal)
     entry_high_replacement.id = UUID('22222222-2222-2222-2222-222222222222')
     entry_high_replacement.priority_score = Decimal("20.0")
     entry_high_replacement.replacement_count = 5
     entry_high_replacement.created_at = datetime(2023, 1, 1, 11, 0, 0)
     entry_high_replacement.original_signal = {"symbol": "HIGH_REP/USDT"}
 
-    entry_fifo = MagicMock(spec=QueueEntry)
+    entry_fifo = MagicMock(spec=QueuedSignal)
     entry_fifo.id = UUID('33333333-3333-3333-3333-333333333333')
     entry_fifo.priority_score = Decimal("20.0")
     entry_fifo.replacement_count = 0
@@ -133,7 +133,7 @@ async def test_promote_from_queue_selects_highest_priority(mock_db_session, mock
         promoted_entry = await promote_from_queue(mock_db_session, mock_user_id)
 
         # Assertions
-        mock_db_session.query.assert_called_once_with(QueueEntry)
+        mock_db_session.query.assert_called_once_with(QueuedSignal)
         mock_db_session.query.return_value.filter.assert_called_once_with(ANY)
         # The application code sorts in Python, so no order_by assertion here.
         
@@ -155,7 +155,7 @@ async def test_promote_from_queue_returns_none_if_empty(mock_db_session, mock_us
     promoted_entry = await promote_from_queue(mock_db_session, mock_user_id)
 
     assert promoted_entry is None
-    mock_db_session.query.assert_called_once_with(QueueEntry)
+    mock_db_session.query.assert_called_once_with(QueuedSignal)
     mock_db_session.query.return_value.filter.assert_called_once_with(ANY)
     mock_db_session.delete.assert_not_called()
     mock_db_session.commit.assert_not_called()

@@ -1,21 +1,23 @@
-from sqlalchemy.orm import Session
-from ..models.trading_models import PositionGroup
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from ..models.trading_models import PositionGroup, PositionGroupStatus
 from uuid import UUID
 import hmac
 import hashlib
+from typing import Dict, Any
 
-def process_tradingview_webhook(db: Session, webhook_data: dict, user_id: UUID) -> PositionGroup:
+async def process_webhook_signal(db: AsyncSession, user_id: UUID, tv_data: Dict[str, Any], execution_intent: Dict[str, Any]) -> PositionGroup:
     """
-    Process a TradingView webhook.
+    Process a TradingView webhook signal.
     """
     # This is a placeholder. In a real-world application, you would
     # validate the webhook signature, and then create or update a
     # position group based on the webhook data.
     
     # For now, we'll just create a new position group.
-    return create_position_group_from_signal(db, webhook_data, user_id)
+    return await create_position_group_from_signal(db, tv_data, user_id)
 
-def validate_webhook_signature(payload: dict, signature: str) -> bool:
+async def validate_webhook_signature(payload: dict, signature: str) -> bool:
     """
     Validate a webhook signature.
     """
@@ -24,7 +26,7 @@ def validate_webhook_signature(payload: dict, signature: str) -> bool:
     # one provided in the webhook.
     return True
 
-def create_position_group_from_signal(db: Session, signal: dict, user_id: UUID) -> PositionGroup:
+async def create_position_group_from_signal(db: AsyncSession, signal: Dict[str, Any], user_id: UUID) -> PositionGroup:
     """
     Create a new position group from a signal.
     """
@@ -32,19 +34,25 @@ def create_position_group_from_signal(db: Session, signal: dict, user_id: UUID) 
         user_id=user_id,
         exchange=signal["exchange"],
         symbol=signal["symbol"],
-        timeframe=signal["timeframe"],
-        status="waiting",
+        timeframe=int(signal["timeframe"].replace("m", "")), # Convert "5m" to 5
+        status=PositionGroupStatus.WAITING,
         entry_signal=signal,
+        total_dca_legs=5, # Placeholder
+        base_entry_price=Decimal("0.0"), # Placeholder
+        weighted_avg_entry=Decimal("0.0"), # Placeholder
+        tp_mode="per_leg", # Placeholder
+        side="long" # Placeholder
     )
     db.add(db_position_group)
-    db.commit()
-    db.refresh(db_position_group)
+    await db.commit()
+    await db.refresh(db_position_group)
     return db_position_group
 
-def add_pyramid_to_group(db: Session, position_group_id: UUID, signal: dict) -> PositionGroup:
+async def add_pyramid_to_group(db: AsyncSession, position_group_id: UUID, signal: dict) -> PositionGroup:
     """
     Add a pyramid to an existing position group.
     """
     # This is a placeholder. In a real-world application, you would
     # add a new pyramid to the specified position group.
-    return db.query(PositionGroup).filter(PositionGroup.id == position_group_id).first()
+    result = await db.execute(select(PositionGroup).filter(PositionGroup.id == position_group_id))
+    return result.scalars().first()

@@ -1,41 +1,52 @@
-from ..models.trading_models import PositionGroup
-from sqlalchemy.orm import Session
-from uuid import UUID
+from ..models.trading_models import PositionGroup, PositionGroupStatus
+from ..db.session import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends # Import Depends
 from ..core.config import settings
-from fastapi import Depends
-from ..db.session import get_db
+from uuid import UUID
+from sqlalchemy import select, func
 
 class ExecutionPoolManager:
-    def __init__(self, db: Session = Depends(get_db)):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def get_open_slots(self, user_id: UUID) -> int:
+    async def get_open_slots(self, user_id: UUID) -> int:
         """
         Count available slots
         """
         max_open_groups = settings.POOL_MAX_OPEN_GROUPS
-        return self.db.query(PositionGroup).filter(
-            PositionGroup.user_id == user_id,
-            PositionGroup.status == "open",
-        ).count()
+        result = await self.db.execute(
+            select(func.count())
+            .where(
+                PositionGroup.user_id == user_id,
+                PositionGroup.status == PositionGroupStatus.LIVE
+            )
+        )
+        open_positions_count = result.scalar_one()
+        return max_open_groups - open_positions_count
 
-    def can_open_position(self, user_id: UUID) -> bool:
+    async def can_open_position(self, user_id: UUID) -> bool:
         """
         Check if a new position can be opened.
         """
-        return self.get_open_slots(user_id) > 0
+        open_slots = await self.get_open_slots(user_id)
+        return open_slots > 0
 
-    def consume_slot(self, group: PositionGroup):
+    async def consume_slot(self, group: PositionGroup):
         """
         Mark a slot as consumed.
         """
+        # This might involve updating the status of the position group
+        # or other logic to reflect a slot being used.
         pass
 
-    def release_slot(self, group: PositionGroup):
+    async def release_slot(self, group: PositionGroup):
         """
         Mark a slot as released.
         """
+        # This might involve updating the status of the position group
+        # or other logic to reflect a slot being freed.
         pass
 
-def get_pool_manager(db: Session = Depends(get_db)) -> ExecutionPoolManager:
+def get_pool_manager(db: AsyncSession = Depends(get_async_db)) -> ExecutionPoolManager:
     return ExecutionPoolManager(db)

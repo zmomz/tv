@@ -10,6 +10,10 @@ services:
     environment:
       - PYTHONPATH=/code/backend
       - TESTING=True
+      - DATABASE_URL=postgresql+asyncpg://tv_user:${POSTGRES_PASSWORD}@db:5432/tv_engine_db
+      - API_KEY=your_api_key
+      - API_SECRET=your_api_secret
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - db
       - redis

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from ..db.session import get_db
+from ..db.session import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..schemas.config_schemas import AppConfig, AppSettings, ExchangeSettings, ExecutionPoolSettings, GridStrategySettings, RiskEngineSettings
 import json
@@ -43,7 +43,7 @@ async def get_config():
 @router.put("", response_model=AppConfig)
 async def update_config(
     config: AppConfig,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Update the application configuration.

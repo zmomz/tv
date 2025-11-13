@@ -20,7 +20,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import your models here to ensure they are registered with SQLAlchemy Base.metadata
-from backend.app.db import Base
+from app.db import Base
 
 target_metadata = Base.metadata
 
@@ -30,7 +30,8 @@ target_metadata = Base.metadata
 # ... etc.
 
 def get_url():
-    return os.getenv("DATABASE_URL")
+    db_password = os.getenv("DB_PASSWORD")
+    return f"postgresql://tv_user:{db_password}@db:5432/tv_engine_db"
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

@@ -2,13 +2,14 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from uuid import UUID
+from ..core.config import settings
 
-JWT_SECRET = os.getenv("JWT_SECRET", "your-jwt-secret-key")
-ALGORITHM = "HS256"
+JWT_SECRET = settings.JWT_SECRET
+ALGORITHM = settings.ALGORITHM
 
 def create_access_token(user_id: UUID, email: str, role: str) -> str:
     """Creates a new access token."""
-    expire = datetime.utcnow() + timedelta(hours=24)
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {
         "exp": expire,
         "sub": str(user_id),
@@ -47,3 +48,7 @@ def refresh_token(old_token: str) -> str:
         raise Exception("Token has expired")
     except jwt.InvalidTokenError:
         raise Exception("Invalid token")
+
+def verify_webhook_token(secret: str) -> bool:
+    """Verifies the webhook secret."""
+    return secret == settings.WEBHOOK_SECRET

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from ..db.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
+from ..db.session import get_async_db
 from ..schemas.key_schemas import ExchangeConfigCreate, ExchangeConfigOut
 from ..services import encryption_service, jwt_service
 from ..services.encryption_service import ENCRYPTION_KEY
@@ -16,7 +17,7 @@ router = APIRouter()
 async def create_exchange_config(
     exchange: str,
     config: ExchangeConfigCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
@@ -33,24 +34,27 @@ async def create_exchange_config(
         api_secret_encrypted=encrypted_api_secret,
     )
     db.add(db_config)
-    db.commit()
-    db.refresh(db_config)
+    await db.commit()
+    await db.refresh(db_config)
     return db_config
 
 @router.get("", response_model=List[ExchangeConfigOut])
 async def get_exchange_configs(
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
     Get all exchange configurations for the current user.
     """
-    return db.query(ExchangeConfig).filter(ExchangeConfig.user_id == current_user.id).all()
+    result = await db.execute(
+        select(ExchangeConfig).where(ExchangeConfig.user_id == current_user.id)
+    )
+    return result.scalars().all()
 
 @router.put("/{exchange}/validate")
 async def validate_exchange_config(
     exchange: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
@@ -64,57 +68,67 @@ async def validate_exchange_config(
 @router.delete("/{exchange}")
 async def delete_exchange_config(
     exchange: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
     Delete an exchange configuration.
     """
-    db.query(ExchangeConfig).filter(
-        ExchangeConfig.user_id == current_user.id,
-        ExchangeConfig.exchange_name == exchange,
-    ).delete()
-    db.commit()
+    await db.execute(
+        delete(ExchangeConfig).where(
+            ExchangeConfig.user_id == current_user.id,
+            ExchangeConfig.exchange_name == exchange,
+        )
+    )
+    await db.commit()
     return {"success": True}
 
 @router.put("/{exchange}/mode")
 async def set_exchange_mode(
     exchange: str,
     mode: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
     Set the mode for an exchange (testnet or live).
     """
-    db_config = db.query(ExchangeConfig).filter(
-        ExchangeConfig.user_id == current_user.id,
-        ExchangeConfig.exchange_name == exchange,
-    ).first()
+    result = await db.execute(
+        select(ExchangeConfig).where(
+            ExchangeConfig.user_id == current_user.id,
+            ExchangeConfig.exchange_name == exchange,
+        )
+    )
+    db_config = result.scalars().first()
     if not db_config:
         raise HTTPException(status_code=404, detail="Exchange configuration not found")
     
     db_config.mode = mode
-    db.commit()
+    db.add(db_config)
+    await db.commit()
     return {"success": True}
 
 @router.put("/{exchange}/enable")
 async def set_exchange_enabled(
     exchange: str,
     enable: bool,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: UserOut = Depends(require_authenticated),
 ):
     """
     Enable or disable an exchange configuration.
     """
-    db_config = db.query(ExchangeConfig).filter(
-        ExchangeConfig.user_id == current_user.id,
-        ExchangeConfig.exchange_name == exchange,
-    ).first()
+    result = await db.execute(
+        select(ExchangeConfig).where(
+            ExchangeConfig.user_id == current_user.id,
+            ExchangeConfig.exchange_name == exchange,
+        )
+    )
+    db_config = result.scalars().first()
     if not db_config:
         raise HTTPException(status_code=404, detail="Exchange configuration not found")
     
     db_config.is_enabled = enable
-    db.commit()
+    db.add(db_config)
+    await db.commit()
     return {"success": True}

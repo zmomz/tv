@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from ..services import order_service, take_profit_service, risk_engine, exchange_manager, precision_service
-from ..db.session import get_db
+from ..db.session import get_async_db
 
 async def refresh_all_precisions():
     """
@@ -9,7 +9,7 @@ async def refresh_all_precisions():
     # TODO: Implement logic to get a database session and query for unique exchange/symbols
     # from the PositionGroup table. For now, we'll use a placeholder.
     print("Refreshing precision cache for all active symbols...")
-    # async with get_db() as db:
+    # async with get_async_db() as db:
     #     symbols = db.query(PositionGroup.exchange, PositionGroup.symbol).distinct().all()
     #     for exchange, symbol in symbols:
     #         await precision_service.fetch_and_cache_precision_rules(db, exchange, symbol)
