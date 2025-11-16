@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { TextField, Button, Box, Typography, Container, Link, Alert } from '@mui/material';
+import { TextField, Button, Box, Typography, Container, Link, Alert, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { useAuth } from '../../hooks/useAuth';
 
 const RegisterPage = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('trader');
   const [error, setError] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ const RegisterPage = () => {
       return;
     }
     try {
-      await register(username, email, password);
+      await register(username, email, password, role);
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to register. Please try again.');
@@ -76,6 +77,19 @@ const RegisterPage = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="role-select-label">Role</InputLabel>
+            <Select
+              labelId="role-select-label"
+              id="role-select"
+              value={role}
+              label="Role"
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <MenuItem value="trader">Trader</MenuItem>
+              <MenuItem value="admin">Admin</MenuItem>
+            </Select>
+          </FormControl>
           <Button
             type="submit"
             fullWidth

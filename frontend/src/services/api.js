@@ -22,7 +22,14 @@ apiClient.interceptors.request.use(
 
 export const auth = {
   login(email, password) {
-    return apiClient.post('/auth/login', { email, password });
+    const formData = new URLSearchParams();
+    formData.append('username', email);
+    formData.append('password', password);
+    return apiClient.post('/auth/token', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
   },
   register(userData) {
     return apiClient.post('/auth/register', userData);

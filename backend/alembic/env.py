@@ -29,22 +29,42 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# ... other imports
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Import your models here to ensure they are registered with SQLAlchemy Base.metadata
+from app.db import Base
+
+target_metadata = Base.metadata
+
 def get_url():
-    db_password = os.getenv("DB_PASSWORD")
-    return f"postgresql://tv_user:{db_password}@db:5432/tv_engine_db"
+    """
+    Returns the database URL from the environment variables, ensuring the
+    driver is compatible with Alembic's synchronous operations.
+    """
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise ValueError("DATABASE_URL environment variable not set.")
+    
+    # Alembic's sync operations require a sync driver.
+    # Replace the asyncpg driver with psycopg2 for the migration script.
+    return url.replace("postgresql+asyncpg", "postgresql+psycopg2")
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode."""
     url = get_url()
     context.configure(
         url=url,
@@ -58,16 +78,18 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    """Run migrations in 'online' mode."""
+    # Get the database URL from the environment
+    url = get_url()
+    
+    # Create a new dictionary for engine_from_config
+    # to avoid modifying the original config object
+    connectable_config = {
+        'sqlalchemy.url': url
+    }
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = get_url()
     connectable = engine_from_config(
-        configuration,
+        connectable_config,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

@@ -7,12 +7,13 @@ from ..core.config import settings
 JWT_SECRET = settings.JWT_SECRET
 ALGORITHM = settings.ALGORITHM
 
-def create_access_token(user_id: UUID, email: str, role: str) -> str:
+def create_access_token(user_id: UUID, username: str, email: str, role: str) -> str:
     """Creates a new access token."""
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {
         "exp": expire,
         "sub": str(user_id),
+        "username": username,
         "email": email,
         "role": role,
     }

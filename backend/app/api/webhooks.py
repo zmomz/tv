@@ -21,14 +21,13 @@ async def receive_webhook(
     Receives and processes webhook signals from TradingView.
     """
     # 1. Verify the webhook token
-    if not verify_webhook_token(webhook_signal.secret):
+    if webhook_signal.secret != settings.WEBHOOK_SECRET:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
 
     # 2. Process the signal
     try:
-        # Assuming process_webhook_signal is updated to be async and takes AsyncSession
-        await process_webhook_signal(db, user_id, webhook_signal.tv, webhook_signal.execution_intent)
-        return {"status": "success", "message": "Webhook signal processed"}
+        result = await process_webhook_signal(db, user_id, webhook_signal.tv, webhook_signal.execution_intent)
+        return result
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -44,9 +43,8 @@ async def test_signal(
     Test endpoint to simulate a webhook signal without requiring a valid webhook secret.
     """
     try:
-        # Assuming process_webhook_signal is updated to be async and takes AsyncSession
-        await process_webhook_signal(db, user_id, signal_payload.tv, signal_payload.execution_intent)
-        return {"status": "success", "message": "Test signal processed"}
+        result = await process_webhook_signal(db, user_id, signal_payload.tv, signal_payload.execution_intent)
+        return result
     except HTTPException as e:
         raise e
     except Exception as e:

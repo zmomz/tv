@@ -1,30 +1,34 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from ..models.trading_models import PositionGroup, PositionGroupStatus
+from ..services.queue_service import add_to_queue
+from ..core.config import settings
 from uuid import UUID
-import hmac
-import hashlib
 from typing import Dict, Any
+from decimal import Decimal
 
-async def process_webhook_signal(db: AsyncSession, user_id: UUID, tv_data: Dict[str, Any], execution_intent: Dict[str, Any]) -> PositionGroup:
+async def process_webhook_signal(db: AsyncSession, user_id: UUID, tv_data: Dict[str, Any], execution_intent: Dict[str, Any]):
     """
-    Process a TradingView webhook signal.
+    Processes a webhook signal by checking the user's execution pool.
+    If the pool is full, the signal is queued. Otherwise, a new position group is created.
     """
-    # This is a placeholder. In a real-world application, you would
-    # validate the webhook signature, and then create or update a
-    # position group based on the webhook data.
-    
-    # For now, we'll just create a new position group.
-    return await create_position_group_from_signal(db, tv_data, user_id)
+    # 1. Check the number of currently live positions for the user.
+    live_positions_query = select(func.count(PositionGroup.id)).filter(
+        PositionGroup.user_id == user_id,
+        PositionGroup.status == PositionGroupStatus.LIVE
+    )
+    result = await db.execute(live_positions_query)
+    live_positions_count = result.scalar_one()
 
-async def validate_webhook_signature(payload: dict, signature: str) -> bool:
-    """
-    Validate a webhook signature.
-    """
-    # This is a placeholder. In a real-world application, you would
-    # use a secret key to generate a signature and compare it to the
-    # one provided in the webhook.
-    return True
+    # 2. Compare with the pool size from settings.
+    if live_positions_count >= settings.POOL_MAX_OPEN_GROUPS:
+        # Pool is full, add the signal to the queue.
+        queued_signal = await add_to_queue(db, tv_data, user_id)
+        return {"status": "success", "action": "queued", "queued_signal_id": queued_signal.id}
+    else:
+        # Pool has space, create a new position group.
+        position_group = await create_position_group_from_signal(db, tv_data, user_id)
+        return {"status": "success", "action": "created", "position_group_id": position_group.id}
 
 async def create_position_group_from_signal(db: AsyncSession, signal: Dict[str, Any], user_id: UUID) -> PositionGroup:
     """
@@ -34,7 +38,7 @@ async def create_position_group_from_signal(db: AsyncSession, signal: Dict[str, 
         user_id=user_id,
         exchange=signal["exchange"],
         symbol=signal["symbol"],
-        timeframe=int(signal["timeframe"].replace("m", "")), # Convert "5m" to 5
+        timeframe=int(signal["timeframe"].replace("m", "")),
         status=PositionGroupStatus.WAITING,
         entry_signal=signal,
         total_dca_legs=5, # Placeholder
@@ -47,12 +51,3 @@ async def create_position_group_from_signal(db: AsyncSession, signal: Dict[str, 
     await db.commit()
     await db.refresh(db_position_group)
     return db_position_group
-
-async def add_pyramid_to_group(db: AsyncSession, position_group_id: UUID, signal: dict) -> PositionGroup:
-    """
-    Add a pyramid to an existing position group.
-    """
-    # This is a placeholder. In a real-world application, you would
-    # add a new pyramid to the specified position group.
-    result = await db.execute(select(PositionGroup).filter(PositionGroup.id == position_group_id))
-    return result.scalars().first()

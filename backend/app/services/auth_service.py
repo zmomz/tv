@@ -15,15 +15,6 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
         password_hash=hashed_password,
         role=user_in.role
     )
-async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
-    """Creates a new user in the database."""
-    hashed_password = hash_password(user_in.password)
-    db_user = User(
-        username=user_in.username,
-        email=user_in.email,
-        password_hash=hashed_password,
-        role=user_in.role
-    )
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)

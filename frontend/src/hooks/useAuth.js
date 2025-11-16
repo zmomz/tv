@@ -35,8 +35,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const register = async (username, email, password) => {
-    await auth.register({ username, email, password, role: 'trader' });
+  const register = async (username, email, password, role) => {
+    await auth.register({ username, email, password, role });
     await login(email, password);
   };
 

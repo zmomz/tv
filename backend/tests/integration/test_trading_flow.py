@@ -90,4 +90,3 @@ async def test_webhook_to_live_position(client: AsyncClient, db_session: AsyncSe
         result = await session.execute(select(PositionGroup))
         position_group = result.scalars().first()
         assert position_group is None
-        break

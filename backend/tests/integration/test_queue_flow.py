@@ -8,9 +8,10 @@ from app.services.queue_service import promote_from_queue
 from app.core.config import settings
 from app.services.jwt_service import create_access_token
 from sqlalchemy import select
-
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from main import app
+from app.db.session import get_async_db
 
 # Helper class from GEMINI.md to mock async context managers
 class MockAsyncContextManager:
@@ -23,85 +24,73 @@ class MockAsyncContextManager:
         pass
 
 @pytest.mark.asyncio
-async def test_pool_full_queues_signal_and_promotes(client: AsyncClient, db_session: AsyncSession, mock_exchange_api):
+async def test_signal_queues_when_pool_is_full(client: AsyncClient, db_session: AsyncSession):
     """
-    Test the full queueing and promotion flow.
+    Test that a new signal is added to the queue when the execution pool is full.
     """
-    # 1. client and db_session are now passed directly as fixtures
-
-    # 2. Arrange: Create a user and set the pool size to 1
     async for session in db_session:
-        user_in = UserCreate(
-            username="queue_user",
-            email="queue@test.com",
-            password="Password123",
-            role="trader"
-        )
+        # 1. Arrange: Create a user and fill the execution pool
+        user_in = UserCreate(username="queue_user", email="queue@test.com", password="Password123", role="trader")
         test_user = await create_user(session, user_in)
-        await session.flush()
-        await session.refresh(test_user)
+        await session.commit()
 
-        exchange_config = ExchangeConfig(
-            user_id=test_user.id,
-            exchange_name="binance",
-            api_key_encrypted="test_api_key",
-            api_secret_encrypted="test_api_secret",
-            mode="testnet",
-            is_enabled=True
-        )
-        session.add(exchange_config)
-        await session.flush()
-        await session.refresh(exchange_config)
+        live_position = PositionGroup(user_id=test_user.id, symbol="ETH/USDT", status=PositionGroupStatus.LIVE, timeframe=5, entry_signal={'action': 'buy'})
+        session.add(live_position)
+        await session.commit()
 
-        # 3. Arrange: Fill the execution pool
-        with patch('app.core.config.settings', settings.copy(update={'POOL_MAX_OPEN_GROUPS': 1})):
-            # Create a live position to fill the pool
-            live_position = PositionGroup(
-                user_id=test_user.id,
-                symbol="ETH/USDT",
-                status=PositionGroupStatus.LIVE,
-                timeframe=5,
-                entry_signal={'action': 'buy'}
-            )
-            session.add(live_position)
-            await session.flush()
-
-            # 4. Act 1 (Queueing): Send a new webhook signal
+        # 2. Act: Send a new webhook signal with the pool maxed out
+        with patch('app.core.config.settings.POOL_MAX_OPEN_GROUPS', 1):
             webhook_payload = {
-                "secret": "test",
+                "secret": settings.WEBHOOK_SECRET,
                 "tv": {"symbol": "BTC/USDT", "exchange": "binance", "timeframe": "5m"},
                 "execution_intent": {"action": "buy", "amount": 0.001, "strategy": "grid"}
             }
             webhook_url = f"/api/webhook/webhook/{test_user.id}"
             
-            mock_exchange_instance = AsyncMock()
-            mock_exchange_context = MockAsyncContextManager(mock_exchange_instance)
-
-            with patch('app.api.webhooks.ExchangeManager', return_value=mock_exchange_context):
-                access_token = create_access_token(user_id=test_user.id, email=test_user.email, role=test_user.role)
-                headers = {"Authorization": f"Bearer {access_token}"}
-                response = await client.post(webhook_url, json=webhook_payload, headers=headers)
-
-            # 5. Assert 1: Verify that a QueuedSignal is created
-            assert response.status_code == 200
-            assert response.json()["status"] == "success"
+            app.dependency_overrides[get_async_db] = lambda: session
+            access_token = create_access_token(user_id=test_user.id, email=test_user.email, role=test_user.role)
+            headers = {"Authorization": f"Bearer {access_token}"}
             
-            assert "queued_signal_id" in response.json() # Changed from group_id
+            response = await client.post(webhook_url, json=webhook_payload, headers=headers)
+            app.dependency_overrides.clear()
 
-            # 6. Act 2 (Promotion): Close the initial position and trigger promotion
-            live_position.status = PositionGroupStatus.CLOSED
-            await session.flush()
+        # 3. Assert: Verify that a QueuedSignal was created
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+        assert "queued_signal_id" in response.json()
 
-            await promote_from_queue(session, test_user.id)
+        result = await session.execute(select(QueuedSignal).filter(QueuedSignal.user_id == test_user.id))
+        queued_signal = result.scalars().first()
+        assert queued_signal is not None
+        assert queued_signal.symbol == "BTC/USDT"
 
-            # 7. Assert 2: Verify that the QueuedSignal is removed and a new PositionGroup is created
-            await session.refresh(live_position)
-            promoted_position_result = await session.execute(select(PositionGroup).filter(PositionGroup.symbol == "BTC/USDT"))
-            promoted_position = promoted_position_result.scalars().first()
-            assert promoted_position is not None
-            assert promoted_position.status == PositionGroupStatus.LIVE
+@pytest.mark.asyncio
+async def test_promote_from_queue_prioritizes_correctly(db_session: AsyncSession):
+    """
+    Test that the promote_from_queue function correctly selects the highest priority signal.
+    """
+    async for session in db_session:
+        # 1. Arrange: Create a user and multiple queued signals with different priorities
+        user_in = UserCreate(username="promote_user", email="promote@test.com", password="Password123", role="trader")
+        test_user = await create_user(session, user_in)
+        await session.flush()
 
-            queue_entry_after_promotion_result = await session.execute(select(QueuedSignal))
-            queue_entry_after_promotion = queue_entry_after_promotion_result.scalars().first()
-            assert queue_entry_after_promotion is None
-        break
+        # Lower priority signal
+        session.add(QueuedSignal(user_id=test_user.id, symbol="BTC/USDT", priority_score=10, replacement_count=0, original_signal={}))
+        # Highest priority signal (higher score)
+        session.add(QueuedSignal(user_id=test_user.id, symbol="ETH/USDT", priority_score=20, replacement_count=0, original_signal={}))
+        # Higher priority signal (same score, more replacements)
+        session.add(QueuedSignal(user_id=test_user.id, symbol="XRP/USDT", priority_score=20, replacement_count=1, original_signal={}))
+        await session.flush()
+
+        # 2. Act: Call the promotion function
+        promoted_signal = await promote_from_queue(session, test_user.id)
+
+        # 3. Assert: Verify that the correct signal was promoted and removed from the queue
+        assert promoted_signal is not None
+        assert promoted_signal.symbol == "XRP/USDT"
+
+        result = await session.execute(select(QueuedSignal).filter(QueuedSignal.user_id == test_user.id))
+        remaining_signals = result.scalars().all()
+        assert len(remaining_signals) == 2
+        assert "XRP/USDT" not in [s.symbol for s in remaining_signals]

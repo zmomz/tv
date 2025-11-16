@@ -6,7 +6,7 @@ from app.schemas.auth_schemas import UserOut
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.url.path.startswith("/api/auth"):
+        if request.url.path.startswith("/api/auth") or request.url.path.startswith("/docs") or request.url.path.startswith("/openapi.json"):
             response = await call_next(request)
             return response
 
@@ -20,7 +20,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 raise ValueError("Invalid authentication scheme")
             
             payload = verify_token(token)
-            request.state.user = payload
+            request.state.user = {
+                "id": payload.get("sub"),
+                "username": payload.get("username"),
+                "email": payload.get("email"),
+                "role": payload.get("role"),
+            }
         except Exception as e:
             return JSONResponse(status_code=401, content={"detail": str(e)})
 

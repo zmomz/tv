@@ -56,10 +56,33 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 @app.exception_handler(RequestValidationError)
+def decode_bytes_recursively(obj):
+    if isinstance(obj, dict):
+        return {k: decode_bytes_recursively(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [decode_bytes_recursively(elem) for elem in obj]
+    elif isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8")
+        except UnicodeDecodeError:
+            return "<undecodable bytes>"
+    else:
+        return obj
+
+@app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = exc.body
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8")
+        except UnicodeDecodeError:
+            body = "<undecodable body>"
+    
+    decoded_errors = decode_bytes_recursively(exc.errors())
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors(), "body": exc.body},
+        content={"detail": decoded_errors, "body": body},
     )
 
 @app.get("/")
